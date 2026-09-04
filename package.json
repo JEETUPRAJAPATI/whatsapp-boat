@@ -1,0 +1,17 @@
+{
+  "name": "whatsapp-boat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WhatsApp Web clone built on whatsapp-web.js with a React frontend and Node/MongoDB backend",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix client install",
+    "dev": "node scripts/dev.js",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix client run build && npm --prefix server start"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+server/storage/media/*
+server/storage/avatars/*
+server/storage/uploads/*
+!server/storage/**/.gitkeep
+*.log
+.DS_Store
