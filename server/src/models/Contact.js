@@ -3,7 +3,7 @@ const { Schema, model } = require('mongoose');
 const ContactSchema = new Schema(
   {
     sessionId: { type: String, index: true, default: 'default' },
-    contactId: { type: String, required: true, unique: true, index: true },
+    contactId: { type: String, required: true, index: true },
     number: String,
     name: String,
     pushname: String,
@@ -20,6 +20,7 @@ const ContactSchema = new Schema(
   { timestamps: true }
 );
 
+ContactSchema.index({ sessionId: 1, contactId: 1 }, { unique: true });
 ContactSchema.index({ name: 'text', pushname: 'text', number: 'text' });
 
 module.exports = model('WaContact', ContactSchema);

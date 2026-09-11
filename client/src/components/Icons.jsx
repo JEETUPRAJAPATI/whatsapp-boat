@@ -117,6 +117,18 @@ export const IconPlay = (p) => (
 );
 
 /** Message delivery ticks: 0 pending, 1 sent, 2 delivered, 3+ read. */
+export const IconPlus = (p) => (
+  <svg {...base} {...p}>
+    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
+  </svg>
+);
+
+export const IconChevronDown = (p) => (
+  <svg {...base} {...p}>
+    <path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z" />
+  </svg>
+);
+
 export function Ticks({ ack = 0, failed }) {
   if (failed) return <span className="tick tick-failed">!</span>;
   if (ack === 0) {

@@ -11,7 +11,7 @@ const cors = require('cors');
 const { connectDB } = require('./config/db');
 const { attachSocket } = require('./socket');
 const apiRoutes = require('./routes/api');
-const wa = require('./services/whatsapp');
+const sessions = require('./services/sessions');
 
 const PORT = Number(process.env.PORT) || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -24,7 +24,7 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 app.get('/health', (_req, res) =>
-  res.json({ ok: true, uptime: process.uptime(), wa: wa.status().state })
+  res.json({ ok: true, uptime: process.uptime(), ...sessions.summary() })
 );
 
 app.use('/api', apiRoutes);
@@ -61,15 +61,15 @@ async function main() {
     console.log('');
   });
 
-  // Auto-start the WhatsApp client. With a saved LocalAuth session this
-  // reconnects silently; otherwise it emits a QR for the UI to render.
-  wa.initialize().catch((e) => console.error('[wa] startup:', e.message));
+  // Bring every previously linked account back up. Accounts are started one at
+  // a time inside the manager, because each one launches a real browser.
+  sessions.restore().catch((e) => console.error('[sessions] restore:', e.message));
 }
 
 async function shutdown(signal) {
   console.log(`\n[server] ${signal} received, shutting down...`);
   try {
-    if (wa.client) await wa.client.destroy();
+    await sessions.shutdown();
   } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();

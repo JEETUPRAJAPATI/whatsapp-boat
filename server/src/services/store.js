@@ -7,6 +7,10 @@
  * UI can paint instantly on reload and so history survives a restart. Every
  * method is a no-op when the database is unreachable, so the app keeps working
  * on live data alone.
+ *
+ * Every row belongs to exactly one linked account, so sessionId is part of the
+ * key everywhere: two accounts can legitimately hold the same chat id, contact
+ * id, or even the same message id, and they must never overwrite each other.
  */
 
 const { isConnected } = require('../config/db');
@@ -43,11 +47,11 @@ function messageDoc(m, sessionId) {
   };
 }
 
-async function saveMessage(m, sessionId = 'default') {
+async function saveMessage(sessionId, m) {
   if (off() || !m || !m.id) return;
   try {
     await Message.updateOne(
-      { msgId: m.id },
+      { sessionId, msgId: m.id },
       { $set: messageDoc(m, sessionId) },
       { upsert: true }
     );
@@ -56,12 +60,16 @@ async function saveMessage(m, sessionId = 'default') {
   }
 }
 
-async function saveMessages(list, sessionId = 'default') {
+async function saveMessages(sessionId, list) {
   if (off() || !Array.isArray(list) || !list.length) return;
   const ops = list
     .filter((m) => m && m.id)
     .map((m) => ({
-      updateOne: { filter: { msgId: m.id }, update: { $set: messageDoc(m, sessionId) }, upsert: true },
+      updateOne: {
+        filter: { sessionId, msgId: m.id },
+        update: { $set: messageDoc(m, sessionId) },
+        upsert: true,
+      },
     }));
   if (!ops.length) return;
   try {
@@ -71,10 +79,10 @@ async function saveMessages(list, sessionId = 'default') {
   }
 }
 
-async function getMessages(chatId, { limit = 50, offset = 0 } = {}) {
+async function getMessages(sessionId, chatId, { limit = 50, offset = 0 } = {}) {
   if (off()) return [];
   try {
-    const docs = await Message.find({ chatId, isDeleted: { $ne: true } })
+    const docs = await Message.find({ sessionId, chatId, isDeleted: { $ne: true } })
       .sort({ timestamp: -1 })
       .skip(Number(offset))
       .limit(Number(limit))
@@ -115,55 +123,59 @@ function fromDoc(d) {
   };
 }
 
-async function updateAck(msgId, ack) {
+async function updateAck(sessionId, msgId, ack) {
   if (off() || !msgId) return;
   try {
-    await Message.updateOne({ msgId }, { $set: { ack } });
+    await Message.updateOne({ sessionId, msgId }, { $set: { ack } });
   } catch {}
 }
 
-async function updateBody(msgId, body) {
+async function updateBody(sessionId, msgId, body) {
   if (off() || !msgId) return;
   try {
-    await Message.updateOne({ msgId }, { $set: { body } });
+    await Message.updateOne({ sessionId, msgId }, { $set: { body } });
   } catch {}
 }
 
-async function updateMedia(msgId, fields) {
+async function updateMedia(sessionId, msgId, fields) {
   if (off() || !msgId) return;
   try {
-    await Message.updateOne({ msgId }, { $set: fields });
+    await Message.updateOne({ sessionId, msgId }, { $set: fields });
   } catch {}
 }
 
-async function markDeleted(msgId) {
+async function markDeleted(sessionId, msgId) {
   if (off() || !msgId) return;
   try {
-    await Message.updateOne({ msgId }, { $set: { isDeleted: true, body: '' } });
+    await Message.updateOne({ sessionId, msgId }, { $set: { isDeleted: true, body: '' } });
   } catch {}
 }
 
-async function saveChat(chat, sessionId = 'default') {
+function chatDoc(sessionId, chat) {
+  return {
+    sessionId,
+    chatId: chat.id,
+    name: chat.name,
+    isGroup: chat.isGroup,
+    isMuted: chat.isMuted,
+    isArchived: chat.isArchived,
+    isPinned: chat.isPinned,
+    isReadOnly: chat.isReadOnly,
+    unreadCount: chat.unreadCount,
+    timestamp: chat.timestamp,
+    lastMessage: chat.lastMessage || null,
+    participants: chat.participants && chat.participants.length ? chat.participants : undefined,
+    participantCount:
+      chat.participantCount != null ? chat.participantCount : (chat.participants || []).length,
+  };
+}
+
+async function saveChat(sessionId, chat) {
   if (off() || !chat || !chat.id) return;
   try {
     await Chat.updateOne(
-      { chatId: chat.id },
-      {
-        $set: {
-          sessionId,
-          chatId: chat.id,
-          name: chat.name,
-          isGroup: chat.isGroup,
-          isMuted: chat.isMuted,
-          isArchived: chat.isArchived,
-          isPinned: chat.isPinned,
-          isReadOnly: chat.isReadOnly,
-          unreadCount: chat.unreadCount,
-          timestamp: chat.timestamp,
-          lastMessage: chat.lastMessage || null,
-          participants: chat.participants && chat.participants.length ? chat.participants : undefined,
-        },
-      },
+      { sessionId, chatId: chat.id },
+      { $set: chatDoc(sessionId, chat) },
       { upsert: true }
     );
   } catch (e) {
@@ -171,22 +183,47 @@ async function saveChat(chat, sessionId = 'default') {
   }
 }
 
-async function saveChats(list, sessionId = 'default') {
+async function saveChats(sessionId, list) {
   if (off() || !Array.isArray(list) || !list.length) return;
-  for (const chat of list) await saveChat(chat, sessionId);
+  const ops = list
+    .filter((c) => c && c.id)
+    .map((c) => ({
+      updateOne: {
+        filter: { sessionId, chatId: c.id },
+        update: { $set: chatDoc(sessionId, c) },
+        upsert: true,
+      },
+    }));
+  if (!ops.length) return;
+  try {
+    await Chat.bulkWrite(ops, { ordered: false });
+  } catch (e) {
+    console.warn('[store] saveChats:', e.message);
+  }
 }
 
-async function setUnread(chatId, unreadCount) {
+async function setUnread(sessionId, chatId, unreadCount) {
   if (off() || !chatId) return;
   try {
-    await Chat.updateOne({ chatId }, { $set: { unreadCount } });
+    await Chat.updateOne({ sessionId, chatId }, { $set: { unreadCount } });
   } catch {}
 }
 
-async function getChats() {
+async function getChats(sessionId) {
   if (off()) return [];
   try {
-    const docs = await Chat.find({}).sort({ timestamp: -1 }).limit(500).lean();
+    const docs = await Chat.find(
+      {
+        sessionId,
+        // Contact stubs WhatsApp creates for people you never messaged; see
+        // isEmptyStub in the WhatsApp service.
+        $nor: [{ timestamp: { $in: [0, null] }, unreadCount: { $in: [0, null] }, lastMessage: null }],
+      },
+      { participants: 0 }
+    )
+      .sort({ timestamp: -1 })
+      .limit(1000)
+      .lean();
     return docs.map((d) => ({
       id: d.chatId,
       name: d.name,
@@ -198,8 +235,7 @@ async function getChats() {
       unreadCount: d.unreadCount,
       timestamp: d.timestamp,
       lastMessage: d.lastMessage || null,
-      participants: d.participants || [],
-      participantCount: (d.participants || []).length,
+      participantCount: d.participantCount || 0,
       cached: true,
     }));
   } catch (e) {
@@ -208,13 +244,13 @@ async function getChats() {
   }
 }
 
-async function saveContacts(list, sessionId = 'default') {
+async function saveContacts(sessionId, list) {
   if (off() || !Array.isArray(list) || !list.length) return;
   const ops = list
     .filter((c) => c && c.id)
     .map((c) => ({
       updateOne: {
-        filter: { contactId: c.id },
+        filter: { sessionId, contactId: c.id },
         update: {
           $set: {
             sessionId,
@@ -241,10 +277,10 @@ async function saveContacts(list, sessionId = 'default') {
   }
 }
 
-async function getContacts() {
+async function getContacts(sessionId) {
   if (off()) return [];
   try {
-    const docs = await Contact.find({ isMe: { $ne: true } })
+    const docs = await Contact.find({ sessionId, isMe: { $ne: true } })
       .sort({ isMyContact: -1, name: 1 })
       .limit(5000)
       .lean();
@@ -267,10 +303,10 @@ async function getContacts() {
   }
 }
 
-async function searchMessages(query, { chatId = null, limit = 50 } = {}) {
+async function searchMessages(sessionId, query, { chatId = null, limit = 50 } = {}) {
   if (off() || !query) return [];
   try {
-    const filter = { body: { $regex: query, $options: 'i' }, isDeleted: { $ne: true } };
+    const filter = { sessionId, body: { $regex: query, $options: 'i' }, isDeleted: { $ne: true } };
     if (chatId) filter.chatId = chatId;
     const docs = await Message.find(filter).sort({ timestamp: -1 }).limit(Number(limit)).lean();
     return docs.map(fromDoc);
@@ -280,15 +316,37 @@ async function searchMessages(query, { chatId = null, limit = 50 } = {}) {
   }
 }
 
-async function stats() {
-  if (off()) return { connected: false };
+/** Drops everything cached for one account - used when it is unlinked. */
+async function purgeSession(sessionId) {
+  if (off() || !sessionId) return { purged: false };
   try {
     const [messages, chats, contacts] = await Promise.all([
-      Message.estimatedDocumentCount(),
-      Chat.estimatedDocumentCount(),
-      Contact.estimatedDocumentCount(),
+      Message.deleteMany({ sessionId }),
+      Chat.deleteMany({ sessionId }),
+      Contact.deleteMany({ sessionId }),
     ]);
-    return { connected: true, messages, chats, contacts };
+    return {
+      purged: true,
+      messages: messages.deletedCount,
+      chats: chats.deletedCount,
+      contacts: contacts.deletedCount,
+    };
+  } catch (e) {
+    console.warn('[store] purgeSession:', e.message);
+    return { purged: false };
+  }
+}
+
+async function stats(sessionId = null) {
+  if (off()) return { connected: false };
+  const filter = sessionId ? { sessionId } : {};
+  try {
+    const [messages, chats, contacts] = await Promise.all([
+      Message.countDocuments(filter),
+      Chat.countDocuments(filter),
+      Contact.countDocuments(filter),
+    ]);
+    return { connected: true, sessionId, messages, chats, contacts };
   } catch {
     return { connected: false };
   }
@@ -309,5 +367,6 @@ module.exports = {
   saveContacts,
   getContacts,
   searchMessages,
+  purgeSession,
   stats,
 };

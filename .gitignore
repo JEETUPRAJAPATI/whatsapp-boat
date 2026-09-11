@@ -9,3 +9,6 @@ server/storage/uploads/*
 !server/storage/**/.gitkeep
 *.log
 .DS_Store
+# Ignore local projects
+/meta-whatsapp/
+/whatsapp-catelog/

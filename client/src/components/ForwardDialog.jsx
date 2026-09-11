@@ -2,11 +2,10 @@ import { useMemo, useState } from 'react';
 import Avatar from './Avatar';
 import { IconClose, IconSearch } from './Icons';
 import { previewOf } from '../lib/format';
-import { api } from '../lib/api';
 import { useWa } from '../store';
 
 export default function ForwardDialog({ message, onClose }) {
-  const { chats, notify } = useWa();
+  const { chats, notify, api } = useWa();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState([]);
   const [sending, setSending] = useState(false);

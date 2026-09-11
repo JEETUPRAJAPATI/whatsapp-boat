@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { mediaUrl } from '../lib/api';
+import { useWa } from '../store';
 import { IconClose, IconDownload } from './Icons';
 import { clockTime } from '../lib/format';
 
 export default function MediaLightbox({ message, onClose }) {
+  const { mediaUrl } = useWa();
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);

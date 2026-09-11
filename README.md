@@ -3,8 +3,10 @@
 A full WhatsApp Web client built on [whatsapp-web.js](https://github.com/wwebjs/whatsapp-web.js).
 React frontend, Node/Express backend, Socket.IO for live updates, MongoDB for persistence.
 
-Scan the QR once, and you get your real chat list, your real contacts, full conversation
-history, and live two-way messaging.
+Link **as many WhatsApp numbers as you like**. Each account runs its own session, and you
+switch between them in the sidebar without logging anything out. Scan a QR once per number
+and you get that account's real chat list, real contacts, full conversation history, and
+live two-way messaging.
 
 ---
 
@@ -15,11 +17,18 @@ npm run setup      # installs server + client dependencies
 npm run dev        # starts both, API on :5000 and UI on :5173
 ```
 
-Open <http://localhost:5173>, scan the QR from **WhatsApp → Settings → Linked devices →
-Link a device**, and the app loads your account.
+Open <http://localhost:5173>. You land on the **accounts screen**:
 
-The session is saved to `server/.wwebjs_auth/`, so restarts reconnect silently — you only
-scan once.
+1. Click **Add WhatsApp account** (optionally name it — "Sales", "Support", "Personal").
+2. A QR dialog opens. Scan it from **WhatsApp → Settings → Linked devices → Link a device**.
+3. The dialog closes itself once the account connects, and its chats load.
+4. Repeat for every number you want to add.
+
+Use the switcher at the top of the sidebar to move between accounts, or **Add or manage
+accounts** to come back to the manager.
+
+Each account's session is saved under `server/.wwebjs_auth/session-<id>/`, so restarts
+reconnect every linked account silently — you only scan once per number.
 
 ### Single-process mode
 
@@ -40,7 +49,7 @@ npm start          # builds the React app and serves everything from :5000
 | `MONGODB_URI` | Mongo connection string |
 | `CHROME_PATH` | Path to a local Chrome. Leave blank to use Puppeteer's bundled Chromium |
 | `WA_HEADLESS` | `false` shows the Chrome window — useful when debugging a login |
-| `WA_SESSION_ID` | Name of the saved auth session |
+| `WA_WEB_VERSION` | Pin a known WhatsApp Web build if a release breaks the library |
 
 MongoDB is a **cache, not a requirement**. If the database is unreachable the server logs a
 warning and keeps running on live WhatsApp data; only offline history and search degrade.
@@ -49,9 +58,13 @@ warning and keeps running on live WhatsApp data; only offline history and search
 
 ## What it does
 
-**Session**
+**Accounts**
+- Link unlimited WhatsApp numbers, each with its own browser session and media cache
+- Accounts screen to add, name, reconnect, log out or remove any account
+- Sidebar switcher with per-account unread badges, including accounts you are not reading
 - QR rendered live over the websocket, with a reload button and sync progress
-- Persistent login, logout, and restart from the UI
+- Every linked account is restored automatically when the server restarts
+- Removing an account deletes its session, cached chats and downloaded media
 
 **Chats**
 - Full chat list with avatars, last message, timestamps, unread badges, pin/mute markers

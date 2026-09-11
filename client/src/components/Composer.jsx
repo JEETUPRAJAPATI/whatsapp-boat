@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconSend, IconAttach, IconEmoji, IconClose, IconDoc, IconLocation } from './Icons';
 import { previewOf, formatBytes } from '../lib/format';
-import { api } from '../lib/api';
 import { useWa } from '../store';
 
 const EMOJIS = [
@@ -12,7 +11,7 @@ const EMOJIS = [
 ];
 
 export default function Composer({ chatId }) {
-  const { sendText, sendMedia, emitTyping, replyTo, setReplyTo, notify } = useWa();
+  const { sendText, sendMedia, emitTyping, replyTo, setReplyTo, notify, api } = useWa();
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);

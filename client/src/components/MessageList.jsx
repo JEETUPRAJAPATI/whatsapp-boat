@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import MessageBubble from './MessageBubble';
 import { dayLabel, sameDay } from '../lib/format';
-import { api } from '../lib/api';
 import { useWa } from '../store';
 
 export default function MessageList({ chat, thread, onOpenMedia, onForward }) {

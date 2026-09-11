@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { IconClose } from './Icons';
-import { api } from '../lib/api';
 import { useWa } from '../store';
 
 /** Start a chat with any number, whether or not it is in the address book. */
 export default function NewChatDialog({ onClose }) {
-  const { openChatWithContact, notify } = useWa();
+  const { openChatWithNumber } = useWa();
   const [number, setNumber] = useState('');
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState(null);
@@ -19,16 +18,14 @@ export default function NewChatDialog({ onClose }) {
     setChecking(true);
     setError(null);
     try {
-      const { id, registered } = await api.resolveNumber(clean);
-      if (!registered || !id) {
+      const id = await openChatWithNumber(clean);
+      if (!id) {
         setError('That number is not registered on WhatsApp');
         return;
       }
-      await openChatWithContact({ id, displayName: `+${clean}`, number: clean });
       onClose();
     } catch (err) {
       setError(err.message);
-      notify(err.message, 'error');
     } finally {
       setChecking(false);
     }

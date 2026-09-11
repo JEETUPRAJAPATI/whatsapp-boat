@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { mediaUrl } from '../lib/api';
+import { useWa } from '../store';
 import {
   clockTime,
   formatBytes,
@@ -45,6 +45,7 @@ function RichText({ text }) {
 }
 
 function MediaBody({ message, onOpenMedia }) {
+  const { mediaUrl } = useWa();
   const [broken, setBroken] = useState(false);
   const url = message.localPreview || mediaUrl(message.id);
   const isTemp = String(message.id).startsWith('temp-');

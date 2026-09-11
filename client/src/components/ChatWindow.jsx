@@ -7,11 +7,10 @@ import MediaLightbox from './MediaLightbox';
 import ForwardDialog from './ForwardDialog';
 import { IconBack, IconMore, IconSearch, IconClose } from './Icons';
 import { phoneOf, clockTime, previewOf } from '../lib/format';
-import { api } from '../lib/api';
 import { useWa } from '../store';
 
 export default function ChatWindow() {
-  const { activeChat, activeThread, selectChat, runChatAction, notify } = useWa();
+  const { activeChat, activeThread, selectChat, runChatAction, notify, api } = useWa();
   const [showInfo, setShowInfo] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null);

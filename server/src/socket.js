@@ -1,12 +1,14 @@
 'use strict';
 
 const { Server } = require('socket.io');
-const wa = require('./services/whatsapp');
+const sessions = require('./services/sessions');
 
 /**
- * Fans WhatsApp service events out to every connected browser.
- * The service is a singleton, so listeners are attached once at startup and the
- * io instance broadcasts - no per-socket subscription bookkeeping needed.
+ * Fans WhatsApp events out to every connected browser.
+ *
+ * Every payload carries the sessionId it came from, so one tab can watch all
+ * linked accounts at once (unread badges for accounts you are not looking at)
+ * while still knowing which account each event belongs to.
  */
 function attachSocket(httpServer, origin) {
   const io = new Server(httpServer, {
@@ -16,20 +18,20 @@ function attachSocket(httpServer, origin) {
 
   io.on('connection', (socket) => {
     console.log('[io] client connected', socket.id);
-    // Immediately hand the new tab the current state so it can render.
-    socket.emit('wa:state', wa.status());
+    // Immediately hand the new tab the full account list so it can render.
+    socket.emit('wa:accounts', sessions.list());
 
-    socket.on('wa:typing', async ({ chatId, mode }) => {
+    socket.on('wa:typing', async ({ sessionId, chatId, mode }) => {
       try {
-        await wa.setTyping(chatId, mode);
+        await sessions.get(sessionId).setTyping(chatId, mode);
       } catch {
         /* typing state is best-effort */
       }
     });
 
-    socket.on('wa:seen', async ({ chatId }) => {
+    socket.on('wa:seen', async ({ sessionId, chatId }) => {
       try {
-        await wa.sendSeen(chatId);
+        await sessions.get(sessionId).sendSeen(chatId);
       } catch {}
     });
 
@@ -37,8 +39,9 @@ function attachSocket(httpServer, origin) {
   });
 
   const forward = (waEvent, ioEvent) =>
-    wa.on(waEvent, (payload) => io.emit(ioEvent, payload));
+    sessions.on(waEvent, (payload) => io.emit(ioEvent, payload));
 
+  forward('accounts', 'wa:accounts');
   forward('state', 'wa:state');
   forward('qr', 'wa:qr');
   forward('ready', 'wa:ready');

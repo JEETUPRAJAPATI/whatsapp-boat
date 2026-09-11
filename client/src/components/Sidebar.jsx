@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Avatar from './Avatar';
 import ChatList from './ChatList';
 import ContactList from './ContactList';
+import AccountSwitcher from './AccountSwitcher';
 import {
   IconSearch,
   IconChats,
@@ -17,14 +18,25 @@ import { useWa } from '../store';
 // once; render a window and extend it as the list is scrolled.
 const PAGE_SIZE = 60;
 
-export default function Sidebar({ onOpenNewChat }) {
-  const { status, chats, contacts, loadChats, loadContacts, logout, runChatAction, notify } = useWa();
+export default function Sidebar({ onOpenNewChat, onManageAccounts }) {
+  const {
+    status,
+    chats,
+    contacts,
+    loadChats,
+    loadContacts,
+    logout,
+    runChatAction,
+    notify,
+    openChatWithNumber,
+  } = useWa();
   const [tab, setTab] = useState('chats');
   const [query, setQuery] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [menu, setMenu] = useState(null); // { chat, x, y }
   const [headerMenu, setHeaderMenu] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [dialling, setDialling] = useState(false);
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -40,25 +52,36 @@ export default function Sidebar({ onOpenNewChat }) {
     };
   }, []);
 
+  const digits = useMemo(() => query.replace(/[^0-9]/g, ''), [query]);
+
   const filteredChats = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return chats;
     return chats.filter((c) => {
       const name = (c.name || '').toLowerCase();
-      const number = c.id.split('@')[0];
       const body = ((c.lastMessage && c.lastMessage.body) || '').toLowerCase();
-      return name.includes(q) || number.includes(q) || body.includes(q);
+      if (name.includes(q) || body.includes(q)) return true;
+      if (!digits) return false;
+      // Group and newer personal chats are keyed by an @lid alias, so the real
+      // phone number is only ever in the display name - search both.
+      return c.id.split('@')[0].includes(digits) || name.replace(/[^0-9]/g, '').includes(digits);
     });
-  }, [chats, query]);
+  }, [chats, query, digits]);
 
   const filteredContacts = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return contacts;
     return contacts.filter((c) => {
       const name = (c.displayName || '').toLowerCase();
-      return name.includes(q) || (c.number || '').includes(q);
+      if (name.includes(q)) return true;
+      if (!digits) return false;
+      return (
+        (c.number || '').includes(digits) ||
+        c.id.split('@')[0].includes(digits) ||
+        name.replace(/[^0-9]/g, '').includes(digits)
+      );
     });
-  }, [contacts, query]);
+  }, [contacts, query, digits]);
 
   // A new tab or a new search starts the window over.
   useEffect(() => setVisible(PAGE_SIZE), [tab, query]);
@@ -85,9 +108,13 @@ export default function Sidebar({ onOpenNewChat }) {
   return (
     <aside className="sidebar" ref={rootRef}>
       <header className="sidebar-header">
-        <Avatar id={status.me && status.me.id} name={status.me && status.me.pushname} size={40} />
+        <Avatar
+          id={status.me && status.me.id}
+          name={status.label || (status.me && status.me.pushname)}
+          size={40}
+        />
         <div className="sidebar-me">
-          <strong>{(status.me && status.me.pushname) || 'You'}</strong>
+          <strong>{status.label || (status.me && status.me.pushname) || 'You'}</strong>
           <span>{status.me && status.me.number ? `+${status.me.number}` : ''}</span>
         </div>
         <div className="sidebar-header-actions">
@@ -117,6 +144,14 @@ export default function Sidebar({ onOpenNewChat }) {
               <button
                 onClick={() => {
                   setHeaderMenu(false);
+                  onManageAccounts();
+                }}
+              >
+                Add or manage accounts
+              </button>
+              <button
+                onClick={() => {
+                  setHeaderMenu(false);
                   refresh();
                 }}
               >
@@ -126,7 +161,11 @@ export default function Sidebar({ onOpenNewChat }) {
                 className="danger"
                 onClick={() => {
                   setHeaderMenu(false);
-                  if (window.confirm('Log out of WhatsApp? You will need to scan the QR again.')) {
+                  if (
+                    window.confirm(
+                      'Log out of this account? You will need to scan its QR code again.'
+                    )
+                  ) {
                     logout();
                   }
                 }}
@@ -137,6 +176,8 @@ export default function Sidebar({ onOpenNewChat }) {
           )}
         </div>
       </header>
+
+      <AccountSwitcher onManage={onManageAccounts} />
 
       <div className="sidebar-search">
         <span className="search-icon">
@@ -166,6 +207,26 @@ export default function Sidebar({ onOpenNewChat }) {
       </nav>
 
       <div className="sidebar-list" onScroll={onListScroll}>
+        {digits.length >= 8 && (
+          <button
+            className="dial-row"
+            disabled={dialling}
+            onClick={async () => {
+              setDialling(true);
+              const id = await openChatWithNumber(digits);
+              setDialling(false);
+              if (id) setQuery('');
+            }}
+          >
+            <span className="dial-row-icon">
+              <IconChats width={20} height={20} />
+            </span>
+            <span className="dial-row-body">
+              <strong>Message +{digits}</strong>
+              <small>{dialling ? 'Checking WhatsApp...' : 'Start a chat with this number'}</small>
+            </span>
+          </button>
+        )}
         {tab === 'chats' ? (
           <ChatList
             chats={filteredChats.slice(0, visible)}

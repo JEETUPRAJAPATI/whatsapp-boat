@@ -29,10 +29,61 @@ for (const dir of [STORAGE, MEDIA_DIR, AVATAR_DIR, UPLOAD_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+/** Session ids reach the filesystem, so keep them to characters a path allows. */
+const safeSegment = (value) => String(value || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+/**
+ * WhatsApp now returns each contact twice on many accounts - once keyed by the
+ * phone number and once by its LID alias - and both serialize to the same id.
+ * Left in, that doubles the payload and hands React duplicate list keys. Keep
+ * the copy whose number actually matches its id; otherwise keep the first.
+ */
+/**
+ * WhatsApp materialises a chat record for plenty of contacts you have never
+ * actually written to. They arrive with no last message, no timestamp and
+ * nothing unread, and listing them makes the sidebar look like an address book
+ * rather than a chat list - WhatsApp's own UI hides them too.
+ *
+ * All three conditions are required: a real chat that is still mid-sync also
+ * has no last message yet, but it carries a timestamp or an unread count.
+ */
+function isEmptyStub(chat) {
+  return !chat.lastMessage && !chat.timestamp && !chat.unreadCount;
+}
+
+/** Chat-list projection: everything a sidebar row needs, and nothing else. */
+function listShape(chat) {
+  const { participants, ...rest } = chat;
+  return { ...rest, participantCount: (participants || []).length };
+}
+
+function dedupeById(list) {
+  const byId = new Map();
+  for (const item of list) {
+    const existing = byId.get(item.id);
+    if (!existing) {
+      byId.set(item.id, item);
+      continue;
+    }
+    const idNumber = item.id.split('@')[0];
+    if (existing.number !== idNumber && item.number === idNumber) byId.set(item.id, item);
+  }
+  return [...byId.values()];
+}
+
 class WhatsAppService extends EventEmitter {
-  constructor() {
+  /**
+   * One instance drives one linked WhatsApp account. Everything that used to be
+   * process-wide (auth profile, media cache, Chrome process) is keyed by
+   * sessionId now, so several accounts can run side by side.
+   */
+  constructor(sessionId, { label = '' } = {}) {
     super();
-    this.sessionId = process.env.WA_SESSION_ID || 'default';
+    this.sessionId = sessionId || 'default';
+    this.label = label;
+    this.createdAt = Date.now();
+    this.mediaDir = path.join(MEDIA_DIR, safeSegment(this.sessionId));
+    fs.mkdirSync(this.mediaDir, { recursive: true });
     this.client = null;
     this.state = STATES.DISCONNECTED;
     this.qr = null;
@@ -81,7 +132,7 @@ class WhatsAppService extends EventEmitter {
   webVersionOptions() {
     const pinned = (process.env.WA_WEB_VERSION || '').trim();
     if (!pinned) return {};
-    console.log('[wa] pinning WhatsApp Web version', pinned);
+    console.log(`[wa:${this.sessionId}] pinning WhatsApp Web version`, pinned);
     return {
       webVersion: pinned,
       webVersionCache: {
@@ -143,11 +194,11 @@ class WhatsAppService extends EventEmitter {
         if (!transient || attempt === maxAttempts) {
           this.lastError = message;
           this.setState(STATES.DISCONNECTED);
-          console.error('[wa] initialize failed:', message);
+          console.error(`[wa:${this.sessionId}] initialize failed:`, message);
           return;
         }
         console.warn(
-          `[wa] startup attempt ${attempt}/${maxAttempts} hit a page navigation race - retrying...`
+          `[wa:${this.sessionId}] startup attempt ${attempt}/${maxAttempts} hit a page navigation race - retrying...`
         );
         await new Promise((r) => setTimeout(r, 1500 * attempt));
       }
@@ -184,7 +235,7 @@ class WhatsAppService extends EventEmitter {
       }
       this.setState(STATES.QR);
       this.emit('qr', { dataUrl: this.qrDataUrl, at: this.qrGeneratedAt });
-      console.log('[wa] QR ready - scan from WhatsApp > Linked devices');
+      console.log(`[wa:${this.sessionId}] QR ready - scan from WhatsApp > Linked devices`);
     });
 
     c.on('loading_screen', (percent, message) => {
@@ -196,13 +247,13 @@ class WhatsAppService extends EventEmitter {
       this.qr = null;
       this.qrDataUrl = null;
       this.setState(STATES.AUTHENTICATED);
-      console.log('[wa] authenticated');
+      console.log(`[wa:${this.sessionId}] authenticated`);
     });
 
     c.on('auth_failure', (msg) => {
       this.lastError = msg;
       this.setState(STATES.AUTH_FAILURE);
-      console.error('[wa] auth failure:', msg);
+      console.error(`[wa:${this.sessionId}] auth failure:`, msg);
     });
 
     c.on('ready', async () => {
@@ -220,14 +271,14 @@ class WhatsAppService extends EventEmitter {
       await this.applyCompatibilityPatches();
       this.setState(STATES.READY);
       this.emit('ready', this.me);
-      console.log('[wa] ready as', this.me.pushname, this.me.number);
+      console.log(`[wa:${this.sessionId}] ready as`, this.me.pushname, this.me.number);
       this.startHealthCheck();
       // Warm the cache in the background so the first UI paint is instant.
-      this.syncAll().catch((e) => console.warn('[wa] initial sync failed:', e.message));
+      this.syncAll().catch((e) => console.warn(`[wa:${this.sessionId}] initial sync failed:`, e.message));
     });
 
     c.on('disconnected', async (reason) => {
-      console.warn('[wa] disconnected:', reason);
+      console.warn(`[wa:${this.sessionId}] disconnected:`, reason);
       this.me = null;
       this.setState(STATES.DISCONNECTED);
       this.emit('disconnected', { reason });
@@ -245,26 +296,26 @@ class WhatsAppService extends EventEmitter {
       try {
         const data = serializeMessage(msg);
         if (!data || !data.chatId) return;
-        await store.saveMessage(data, this.sessionId);
+        await store.saveMessage(this.sessionId, data);
         const chat = await this.safeChat(msg);
-        if (chat) await store.saveChat(chat, this.sessionId);
-        this.emit('message', { message: data, chat });
+        if (chat) await store.saveChat(this.sessionId, chat);
+        this.emit('message', { message: data, chat: chat ? listShape(chat) : null });
       } catch (err) {
-        console.error('[wa] message_create handler:', err.message);
+        console.error(`[wa:${this.sessionId}] message_create handler:`, err.message);
       }
     });
 
     c.on('message_ack', async (msg, ack) => {
       const id = idOf(msg.id);
       if (!id) return;
-      await store.updateAck(id, ack);
+      await store.updateAck(this.sessionId, id, ack);
       this.emit('ack', { id, chatId: idOf(msg.fromMe ? msg.to : msg.from), ack });
     });
 
     c.on('message_revoke_everyone', async (_after, before) => {
       const id = before ? idOf(before.id) : null;
       if (!id) return;
-      await store.markDeleted(id);
+      await store.markDeleted(this.sessionId, id);
       this.emit('revoke', { id, chatId: before ? idOf(before.from) : null });
     });
 
@@ -281,12 +332,12 @@ class WhatsAppService extends EventEmitter {
 
     c.on('message_edit', async (msg, newBody) => {
       const id = idOf(msg.id);
-      await store.updateBody(id, newBody);
+      await store.updateBody(this.sessionId, id, newBody);
       this.emit('edit', { id, body: newBody, chatId: idOf(msg.fromMe ? msg.to : msg.from) });
     });
 
     c.on('chat_archived', (chat, archived) =>
-      this.emit('chat_update', { chat: serializeChat(chat), archived })
+      this.emit('chat_update', { chat: listShape(serializeChat(chat)), archived })
     );
     c.on('chat_removed', (chat) => this.emit('chat_removed', { id: idOf(chat.id) }));
 
@@ -313,6 +364,7 @@ class WhatsAppService extends EventEmitter {
   status() {
     return {
       sessionId: this.sessionId,
+      label: this.label,
       state: this.state,
       // A page whose injection could not be repaired is linked but unusable,
       // so it must not report itself as connected.
@@ -471,11 +523,11 @@ class WhatsAppService extends EventEmitter {
         return 'applied';
       })
       .catch((e) => {
-        console.warn('[wa] could not apply compatibility patch:', e.message);
+        console.warn(`[wa:${this.sessionId}] could not apply compatibility patch:`, e.message);
         return 'failed';
       });
 
-    if (applied === 'applied') console.log('[wa] compatibility patch applied (getChatModel)');
+    if (applied === 'applied') console.log(`[wa:${this.sessionId}] compatibility patch applied (getChatModel)`);
     return applied === 'applied' || applied === 'already';
   }
 
@@ -483,11 +535,11 @@ class WhatsAppService extends EventEmitter {
   async recoverInjection() {
     if (this.recovering) return this.recovering;
     this.recovering = (async () => {
-      console.warn('[wa] page injection lost - re-injecting...');
+      console.warn(`[wa:${this.sessionId}] page injection lost - re-injecting...`);
       await this.client.inject();
       // A fresh injection replaces WWebJS, so the patch has to go back on.
       await this.applyCompatibilityPatches();
-      console.log('[wa] re-injection succeeded');
+      console.log(`[wa:${this.sessionId}] re-injection succeeded`);
       this.injectionBroken = false;
       this.emit('recovered', {});
     })();
@@ -496,7 +548,7 @@ class WhatsAppService extends EventEmitter {
     } catch (err) {
       this.injectionBroken = true;
       this.lastError = `Re-injection failed: ${err.message || err}`;
-      console.error('[wa]', this.lastError);
+      console.error(`[wa:${this.sessionId}]`, this.lastError);
       this.emit('state', this.status());
       throw Object.assign(
         new Error(
@@ -547,11 +599,13 @@ class WhatsAppService extends EventEmitter {
   }
 
   async logout() {
+    clearInterval(this.healthTimer);
+    this.healthTimer = null;
     if (!this.client) return { ok: true };
     try {
       await this.client.logout();
     } catch (e) {
-      console.warn('[wa] logout:', e.message);
+      console.warn(`[wa:${this.sessionId}] logout:`, e.message);
     }
     try {
       await this.client.destroy();
@@ -583,9 +637,9 @@ class WhatsAppService extends EventEmitter {
   async getChats() {
     return this.guard(async (c) => {
       const chats = await c.getChats();
-      const data = chats.map(serializeChat).filter(Boolean);
-      store.saveChats(data, this.sessionId).catch(() => {});
-      return data;
+      const data = chats.map(serializeChat).filter(Boolean).filter((x) => !isEmptyStub(x));
+      store.saveChats(this.sessionId, data).catch(() => {});
+      return data.map(listShape);
     });
   }
 
@@ -597,16 +651,17 @@ class WhatsAppService extends EventEmitter {
   async getContacts() {
     return this.guard(async (c) => {
       const contacts = await c.getContacts();
-      const data = contacts
-        .map(serializeContact)
-        .filter((x) => x && x.id && !x.isMe)
-        // Keep real people and groups; drop broadcast/status pseudo-entries.
-        .filter((x) => x.id.endsWith('@c.us') || x.id.endsWith('@g.us') || x.id.endsWith('@lid'))
-        .sort((a, b) => {
-          if (a.isMyContact !== b.isMyContact) return a.isMyContact ? -1 : 1;
-          return (a.displayName || '').localeCompare(b.displayName || '');
-        });
-      store.saveContacts(data, this.sessionId).catch(() => {});
+      const data = dedupeById(
+        contacts
+          .map(serializeContact)
+          .filter((x) => x && x.id && !x.isMe)
+          // Keep real people and groups; drop broadcast/status pseudo-entries.
+          .filter((x) => x.id.endsWith('@c.us') || x.id.endsWith('@g.us') || x.id.endsWith('@lid'))
+      ).sort((a, b) => {
+        if (a.isMyContact !== b.isMyContact) return a.isMyContact ? -1 : 1;
+        return (a.displayName || '').localeCompare(b.displayName || '');
+      });
+      store.saveContacts(this.sessionId, data).catch(() => {});
       return data;
     });
   }
@@ -625,7 +680,7 @@ class WhatsAppService extends EventEmitter {
       const window = Math.min(Number(limit) + Number(offset), 2000);
       const msgs = await chat.fetchMessages({ limit: window });
       const all = msgs.map(serializeMessage).filter(Boolean);
-      store.saveMessages(all, this.sessionId).catch(() => {});
+      store.saveMessages(this.sessionId, all).catch(() => {});
       const end = all.length - Number(offset);
       const start = Math.max(0, end - Number(limit));
       return {
@@ -688,9 +743,9 @@ class WhatsAppService extends EventEmitter {
     }
     // Index misses only cost one directory scan per server start.
     if (!this.mediaIndexBuilt) {
-      for (const file of fs.readdirSync(MEDIA_DIR)) {
+      for (const file of fs.readdirSync(this.mediaDir)) {
         const dot = file.lastIndexOf('.');
-        if (dot > 0) this.mediaIndex.set(file.slice(0, dot), path.join(MEDIA_DIR, file));
+        if (dot > 0) this.mediaIndex.set(file.slice(0, dot), path.join(this.mediaDir, file));
       }
       this.mediaIndexBuilt = true;
       const found = this.mediaIndex.get(safeId);
@@ -708,11 +763,11 @@ class WhatsAppService extends EventEmitter {
       throw Object.assign(new Error('Media is no longer available'), { status: 410 });
     }
     const ext = mime.extension(media.mimetype) || 'bin';
-    const filePath = path.join(MEDIA_DIR, `${safeId}.${ext}`);
+    const filePath = path.join(this.mediaDir, `${safeId}.${ext}`);
     fs.writeFileSync(filePath, Buffer.from(media.data, 'base64'));
     this.mediaIndex.set(safeId, filePath);
     store
-      .updateMedia(messageId, {
+      .updateMedia(this.sessionId, messageId, {
         mediaMime: media.mimetype,
         mediaFilename: media.filename || path.basename(filePath),
         mediaPath: filePath,
@@ -780,7 +835,7 @@ class WhatsAppService extends EventEmitter {
     const msg = await c.getMessageById(messageId);
     if (!msg) throw Object.assign(new Error('Message not found'), { status: 404 });
     await msg.delete(!!everyone);
-    await store.markDeleted(messageId);
+    await store.markDeleted(this.sessionId, messageId);
     return { ok: true };
   }
 
@@ -814,7 +869,7 @@ class WhatsAppService extends EventEmitter {
       const chat = await c.getChatById(chatId);
       if (!chat) return { ok: true, skipped: 'no chat yet' };
       await chat.sendSeen();
-      store.setUnread(chatId, 0).catch(() => {});
+      store.setUnread(this.sessionId, chatId, 0).catch(() => {});
       return { ok: true };
     });
   }
@@ -952,9 +1007,4 @@ class WhatsAppService extends EventEmitter {
   }
 }
 
-const service = new WhatsAppService();
-service.STATES = STATES;
-service.MEDIA_DIR = MEDIA_DIR;
-service.UPLOAD_DIR = UPLOAD_DIR;
-
-module.exports = service;
+module.exports = { WhatsAppService, STATES, MEDIA_DIR, UPLOAD_DIR, AVATAR_DIR, ROOT, safeSegment };

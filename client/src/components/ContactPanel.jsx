@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react';
 import Avatar from './Avatar';
 import { IconClose } from './Icons';
 import { phoneOf } from '../lib/format';
-import { api } from '../lib/api';
 import { useWa } from '../store';
 
 /** Right-hand drawer showing contact details or the group roster. */
 export default function ContactPanel({ chat, onClose }) {
-  const { contactIndex, openChatWithContact } = useWa();
+  const { contactIndex, openChatWithContact, api } = useWa();
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  // The chat list ships only a participant count - the roster itself is
+  // fetched here, for the one group actually being looked at.
+  const [roster, setRoster] = useState(chat.participants || []);
 
   useEffect(() => {
     let alive = true;
@@ -22,9 +24,22 @@ export default function ContactPanel({ chat, onClose }) {
     return () => {
       alive = false;
     };
-  }, [chat.id]);
+  }, [chat.id, api]);
 
-  const participants = chat.participants || [];
+  useEffect(() => {
+    let alive = true;
+    setRoster(chat.participants || []);
+    if (!chat.isGroup || (chat.participants && chat.participants.length)) return undefined;
+    api
+      .chat(chat.id)
+      .then((full) => alive && setRoster((full && full.participants) || []))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [chat.id, chat.isGroup, chat.participants, api]);
+
+  const participants = roster;
 
   return (
     <aside className="info-panel">
@@ -38,7 +53,11 @@ export default function ContactPanel({ chat, onClose }) {
       <div className="info-hero">
         <Avatar id={chat.id} name={chat.name} isGroup={chat.isGroup} size={160} />
         <h2>{chat.name || chat.id.split('@')[0]}</h2>
-        <p>{chat.isGroup ? `${participants.length} participants` : phoneOf(chat.id)}</p>
+        <p>
+          {chat.isGroup
+            ? `${participants.length || chat.participantCount || 0} participants`
+            : phoneOf(chat.id)}
+        </p>
       </div>
 
       {!chat.isGroup && (

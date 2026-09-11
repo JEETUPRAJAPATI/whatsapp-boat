@@ -1509,3 +1509,463 @@ a {
   color: var(--text);
   border-color: var(--text-muted);
 }
+
+/* ------------------------------------------------------------------ */
+/* accounts: the manager screen, the switcher and the QR dialog        */
+/* ------------------------------------------------------------------ */
+
+.accounts-screen {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-app);
+}
+
+/* The band is a real element rather than a fixed-pixel gradient stop, so the
+   cards can overlap it on purpose instead of straddling it by accident. */
+.accounts-hero {
+  padding: 30px 24px 96px;
+  background: var(--accent);
+}
+.accounts-hero-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.accounts-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: #d9fdd3;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+.accounts-brand-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d9fdd3;
+}
+.accounts-hero h1 {
+  margin: 0 0 8px;
+  font-size: 27px;
+  font-weight: 400;
+  color: #fff;
+}
+.accounts-hero p {
+  margin: 0;
+  max-width: 62ch;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.accounts-hero .btn-ghost {
+  flex-shrink: 0;
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+}
+.accounts-hero .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #fff;
+  color: #fff;
+}
+
+.accounts-body {
+  max-width: 1100px;
+  margin: -72px auto 0;
+  padding: 0 24px 72px;
+}
+
+.accounts-empty {
+  padding: 56px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: 0 14px 38px rgba(11, 20, 26, 0.45);
+  color: var(--text-muted);
+}
+
+.accounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(336px, 1fr));
+  gap: 20px;
+}
+
+.account-card {
+  min-height: 232px;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: 0 14px 38px rgba(11, 20, 26, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.account-card.is-live {
+  box-shadow: 0 14px 38px rgba(11, 20, 26, 0.45), inset 0 0 0 1px rgba(0, 168, 132, 0.5);
+}
+.account-card-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.account-card-id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.account-card-id strong {
+  font-size: 16.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-card-id > span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.account-card-error {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: rgba(241, 92, 109, 0.12);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+/* Actions sit on the floor of the card so every card lines up, however much
+   text the rows above them carry. */
+.account-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.account-card-actions .btn-primary,
+.account-card-actions .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.account-card-actions .btn-ghost.danger {
+  color: var(--danger);
+  border-color: rgba(241, 92, 109, 0.4);
+}
+.account-card-actions .btn-ghost.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin-top: 5px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 20px;
+  background: var(--bg-header);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.state-pill.ok .state-dot,
+.state-dot.ok {
+  background: #06cf9c;
+}
+.state-pill.warn .state-dot {
+  background: #f5c451;
+}
+.state-pill.bad .state-dot {
+  background: var(--danger);
+}
+.state-pill.idle .state-dot {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.account-rename {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.account-rename:focus {
+  border-color: var(--accent);
+}
+.account-add-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.account-add {
+  justify-content: center;
+  gap: 12px;
+}
+
+.account-add-btn {
+  min-height: 232px;
+  padding: 22px;
+  border: 1px dashed rgba(134, 150, 160, 0.4);
+  border-radius: var(--radius);
+  background: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--text-muted);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.account-add-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-app));
+  color: var(--text);
+}
+.account-add-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.account-add-btn strong {
+  font-size: 15.5px;
+  font-weight: 500;
+}
+.account-add-btn span:last-child {
+  font-size: 12.5px;
+}
+.account-add-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0b141a;
+}
+
+/* switcher inside the sidebar */
+
+.account-switcher {
+  position: relative;
+  padding: 8px 12px 0;
+}
+.account-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--bg-header);
+  color: var(--text);
+  text-align: left;
+}
+.account-switcher-trigger:hover {
+  background: var(--bg-active);
+}
+.account-switcher-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.account-switcher-name small {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+}
+.account-switcher-name strong {
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-switcher-caret {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.account-menu {
+  top: 50px;
+  left: 12px;
+  right: 12px;
+  min-width: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.menu-title {
+  margin: 0;
+  padding: 10px 16px 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.account-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 14px;
+}
+.account-menu-row.active {
+  background: var(--bg-active);
+}
+.account-menu-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.account-menu-meta strong {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu-meta small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.account-menu-add {
+  border-top: 1px solid var(--divider);
+  color: var(--accent-strong);
+}
+
+/* QR dialog */
+
+.link-modal {
+  width: min(840px, 94vw);
+}
+.link-modal .modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.link-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 40px;
+  padding: 30px 32px 34px;
+  align-items: center;
+  overflow-y: auto;
+}
+.link-body .qr-instructions ol {
+  line-height: 2;
+  font-size: 14px;
+}
+.link-body .qr-note {
+  margin-top: 20px;
+}
+.qr-frame-ok {
+  border: 1px solid rgba(6, 207, 156, 0.55);
+  color: var(--accent-strong);
+}
+
+@media (max-width: 900px) {
+  .link-body {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    justify-items: center;
+  }
+  .accounts-hero-inner {
+    flex-direction: column;
+  }
+}
+@media (max-width: 560px) {
+  .accounts-hero {
+    padding: 24px 16px 88px;
+  }
+  .accounts-body {
+    padding: 0 16px 56px;
+  }
+  .accounts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* "Message +<number>" row shown when the sidebar search looks like a number */
+.dial-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 12px 15px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  text-align: left;
+}
+.dial-row:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.dial-row:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.dial-row-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0b141a;
+  flex-shrink: 0;
+}
+.dial-row-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dial-row-body strong {
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.dial-row-body small {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
