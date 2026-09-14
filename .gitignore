@@ -10,5 +10,5 @@ server/storage/uploads/*
 *.log
 .DS_Store
 # Ignore local projects
-/meta-whatsapp/
-/whatsapp-catelog/
+# /meta-whatsapp/
+# /whatsapp-catelog/

@@ -1,0 +1,568 @@
+/*
+ * Additions on top of the shared WhatsApp Web theme in app.css.
+ * Everything here is specific to the Cloud API inbox: login, the 24h service
+ * window banners, conversation tags and delivery-failure styling.
+ */
+
+.boot-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* ------------------------------------------------------------------ */
+/* login                                                               */
+/* ------------------------------------------------------------------ */
+
+.login-card {
+  grid-template-columns: 1fr;
+  max-width: 420px;
+  gap: 22px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form .btn-primary {
+  margin-top: 4px;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  outline: none;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* conversation list                                                   */
+/* ------------------------------------------------------------------ */
+
+.chat-row.is-unread .chat-row-name {
+  font-weight: 600;
+}
+
+.chat-row.is-unread .chat-row-preview {
+  color: var(--text);
+}
+
+.pill-tag {
+  padding: 1px 7px;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.conn-dot.off {
+  background: var(--danger);
+}
+
+/* ------------------------------------------------------------------ */
+/* app shell and banners                                               */
+/* ------------------------------------------------------------------ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* The grid keeps its own scrolling; the shell owns the viewport height. */
+.app-shell .app {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.app-banner {
+  flex-shrink: 0;
+  padding: 7px;
+  background: #7a4a12;
+  color: #ffe9c9;
+  font-size: 13px;
+  text-align: center;
+}
+
+.app-banner.warn {
+  background: #5a4a1f;
+  color: #ffe9a8;
+}
+
+/* ------------------------------------------------------------------ */
+/* bubbles                                                             */
+/* ------------------------------------------------------------------ */
+
+.bubble-tag {
+  margin-bottom: 4px;
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.bubble-muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bubble-error {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(241, 92, 109, 0.35);
+  color: #ffc9d0;
+  font-size: 12.5px;
+}
+
+/*
+ * app.css pins .bubble-meta to the bottom-right corner and reserves room for it
+ * with padding on .bubble-text. A failure block sits below that text, so on a
+ * failed bubble the stamp returns to normal flow instead of overlapping it.
+ */
+.bubble.failed .bubble-text {
+  padding-right: 0;
+}
+
+.bubble.failed .bubble-meta {
+  position: static;
+  justify-content: flex-end;
+  margin-top: 5px;
+}
+
+.retry-link {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 12.5px;
+  text-decoration: underline;
+  padding: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* composer and the 24h service window                                 */
+/* ------------------------------------------------------------------ */
+
+.window-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.window-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+/*
+ * Tabular figures keep the digits from jiggling as the seconds tick, and the
+ * fixed min-width stops the row reflowing when 9h becomes 10h.
+ */
+.window-countdown {
+  min-width: 10ch;
+  color: var(--accent-strong);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  padding: 0;
+  text-decoration: underline;
+}
+
+.window-closed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 10px 14px 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(241, 92, 109, 0.3);
+  border-radius: var(--radius);
+  background: rgba(241, 92, 109, 0.08);
+}
+
+.window-closed strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.window-closed span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ */
+/* customer info panel                                                 */
+/* ------------------------------------------------------------------ */
+
+.info-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 22px 26px;
+}
+
+.info-actions .btn-ghost {
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------ */
+/* responsive                                                          */
+/* ------------------------------------------------------------------ */
+
+.back-btn {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: flex;
+  }
+
+  .app.has-active .sidebar {
+    display: none;
+  }
+
+  .app:not(.has-active) .chat-window,
+  .app:not(.has-active) .empty-state {
+    display: none;
+  }
+
+  .back-btn {
+    display: inline-flex;
+  }
+
+  .info-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    width: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* composer tools: attach + emoji                                      */
+/* ------------------------------------------------------------------ */
+
+.composer-tools {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.menu-attach {
+  bottom: 46px;
+  left: 0;
+  min-width: 190px;
+}
+
+.menu-attach button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* app.css styles .emoji-panel as an 8-column grid of buttons. This panel is
+   grouped instead, so the grid lives on .emoji-grid and the panel stacks. */
+.emoji-panel {
+  display: block;
+  grid-template-columns: none;
+  position: absolute;
+  bottom: 46px;
+  left: 0;
+  z-index: 60;
+  width: min(340px, 84vw);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--bg-header);
+  box-shadow: var(--shadow);
+}
+
+.emoji-group + .emoji-group {
+  margin-top: 10px;
+}
+
+.emoji-group-name {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 1px;
+}
+
+.emoji-grid button {
+  padding: 3px 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.emoji-grid button:hover {
+  background: var(--bg-active);
+}
+
+@media (max-width: 520px) {
+  .emoji-grid {
+    grid-template-columns: repeat(8, 1fr);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* media inside bubbles                                                */
+/* ------------------------------------------------------------------ */
+
+.bubble.has-media {
+  padding: 4px 4px 8px;
+}
+
+/* Keeps the right gutter the absolutely positioned stamp needs, so a caption
+   never runs underneath the time and ticks. */
+.bubble.has-media .bubble-text {
+  padding: 4px 60px 2px 6px;
+}
+
+.bubble-image img,
+.bubble-video video {
+  display: block;
+  max-width: min(330px, 62vw);
+  max-height: 380px;
+  width: auto;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.bubble-video video {
+  cursor: default;
+}
+
+.bubble-sticker img {
+  display: block;
+  width: 130px;
+  height: auto;
+}
+
+.bubble-audio audio {
+  display: block;
+  width: min(280px, 60vw);
+  height: 40px;
+}
+
+.bubble-doc {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: min(300px, 62vw);
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  color: inherit;
+  text-align: left;
+}
+
+.bubble-doc:hover {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.bubble-doc-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bubble-doc-meta strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.bubble-doc-meta span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.media-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 150px;
+  min-height: 54px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.media-broken {
+  color: var(--danger);
+}
+
+.bubble-uploading {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+/* ------------------------------------------------------------------ */
+/* attach preview dialog                                               */
+/* ------------------------------------------------------------------ */
+
+.attach-modal {
+  width: min(460px, 94vw);
+}
+
+.attach-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 190px;
+  max-height: 320px;
+  padding: 14px;
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+.attach-preview img,
+.attach-preview video {
+  max-width: 100%;
+  max-height: 290px;
+  border-radius: 6px;
+}
+
+.attach-doc-icon {
+  color: var(--text-muted);
+}
+
+.attach-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 18px 0;
+}
+
+.attach-meta strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.attach-meta span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.attach-caption {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  outline: none;
+}
+
+.attach-caption:focus {
+  border-color: var(--accent);
+}
+
+.upload-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 20px;
+  margin-top: 12px;
+}
+
+.upload-bar-fill {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+.upload-bar span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+/* ------------------------------------------------------------------ */
+/* lightbox                                                            */
+/* ------------------------------------------------------------------ */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  color: #fff;
+}

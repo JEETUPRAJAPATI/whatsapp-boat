@@ -1,0 +1,507 @@
+// WhatsApp Business Catalog Management System - PostgreSQL (Supabase) schema.
+//
+// The inbox models (Customer, Conversation, Message, AdminUser, WebhookLog)
+// are carried over byte-identical from the meta-whatsapp inbox: both apps point
+// at the same database, so this schema must describe those tables exactly as
+// they already exist. Everything after the "Catalog management" banner is new
+// and additive.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum MessageDirection {
+  INCOMING
+  OUTGOING
+}
+
+enum MessageStatus {
+  PENDING
+  RECEIVED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  phoneNumber   String   @unique @map("phone_number")
+  name          String?
+  profileName   String?  @map("profile_name")
+  waId          String?  @map("wa_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+
+  @@map("customers")
+}
+
+model Conversation {
+  id             String             @id @default(uuid())
+  customerId     String             @map("customer_id")
+  phoneNumber    String             @map("phone_number")
+  status         ConversationStatus @default(OPEN)
+  lastMessage    String?            @map("last_message")
+  lastMessageAt  DateTime?          @map("last_message_at")
+  // Timestamp of the newest *customer* message: the 24h service window anchor.
+  lastInboundAt  DateTime?          @map("last_inbound_at")
+  unreadCount    Int                @default(0) @map("unread_count")
+  assignedTo     String?            @map("assigned_to")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([customerId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id @default(uuid())
+  conversationId String           @map("conversation_id")
+  // Unique so a replayed Meta webhook cannot insert the same message twice.
+  metaMessageId  String?          @unique @map("meta_message_id")
+  direction      MessageDirection
+  messageType    String           @default("text") @map("message_type")
+  messageText    String?          @map("message_text")
+  mediaId        String?          @map("media_id")
+  mediaUrl       String?          @map("media_url")
+  mediaMimeType  String?          @map("media_mime_type")
+  mediaFilename  String?          @map("media_filename")
+  caption        String?
+  contextId      String?          @map("context_id")
+  status         MessageStatus    @default(PENDING)
+  timestamp      DateTime         @default(now())
+  errorCode      String?          @map("error_code")
+  errorTitle     String?          @map("error_title")
+  errorMessage   String?          @map("error_message")
+  sentBy         String?          @map("sent_by")
+  rawPayload     Json?            @map("raw_payload")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, timestamp])
+  @@map("messages")
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  role         String   @default("admin")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("admin_users")
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  eventType String   @map("event_type")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("webhook_logs")
+}
+
+// ===========================================================================
+// Catalog management
+//
+// Hierarchy - nothing here hardcodes a single number or catalog:
+//   Business -> WhatsappAccount (WABA) -> WhatsappPhoneNumber
+//                                      -> Catalog -> Product
+// ===========================================================================
+
+enum ConnectionStatus {
+  PENDING
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING
+  FAILED
+  CONFLICT
+}
+
+enum SyncRunStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ProductAvailability {
+  IN_STOCK
+  OUT_OF_STOCK
+  PREORDER
+  AVAILABLE_FOR_ORDER
+  DISCONTINUED
+}
+
+enum ProductCondition {
+  NEW
+  REFURBISHED
+  USED
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+}
+
+/// A Meta Business Portfolio (Business Manager).
+model Business {
+  id             String   @id @default(uuid())
+  metaBusinessId String?  @unique @map("meta_business_id")
+  name           String
+  timezone       String?
+  currency       String   @default("INR")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  whatsappAccounts WhatsappAccount[]
+  categories       Category[]
+  autoReplyRules   AutoReplyRule[]
+
+  @@map("businesses")
+}
+
+/// A WhatsApp Business Account (WABA). One business can own several.
+model WhatsappAccount {
+  id         String           @id @default(uuid())
+  businessId String           @map("business_id")
+  wabaId     String           @unique @map("waba_id")
+  name       String
+  /// Currency Meta reports for this WABA, used as the catalog default.
+  currency   String?
+  timezoneId String?          @map("timezone_id")
+  status     ConnectionStatus @default(PENDING)
+  /// True once our app is subscribed to this WABA webhook field set.
+  webhookSubscribed Boolean   @default(false) @map("webhook_subscribed")
+  /// Reason shown in the UI when status is ERROR.
+  statusMessage String?       @map("status_message")
+  lastCheckedAt DateTime?     @map("last_checked_at")
+  isDefault     Boolean       @default(false) @map("is_default")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  business     Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  phoneNumbers WhatsappPhoneNumber[]
+  catalogs     Catalog[]
+  credential   MetaCredential?
+
+  @@index([businessId])
+  @@map("whatsapp_accounts")
+}
+
+/// The encrypted Meta access token for one WABA.
+///
+/// Kept in its own table so the token is never loaded by an ordinary account
+/// query and can never be serialised into an API response by accident.
+model MetaCredential {
+  id                String    @id @default(uuid())
+  whatsappAccountId String    @unique @map("whatsapp_account_id")
+  /// AES-256-GCM ciphertext, stored as iv:authTag:payload (hex).
+  accessTokenEnc    String    @map("access_token_enc")
+  tokenType         String    @default("business") @map("token_type")
+  /// Null means a long-lived / system-user token with no stated expiry.
+  expiresAt         DateTime? @map("expires_at")
+  scopes            String[]  @default([])
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  account WhatsappAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@map("meta_credentials")
+}
+
+/// A phone number registered on a WABA.
+model WhatsappPhoneNumber {
+  id                 String           @id @default(uuid())
+  whatsappAccountId  String           @map("whatsapp_account_id")
+  phoneNumberId      String           @unique @map("phone_number_id")
+  phoneNumber        String           @map("phone_number")
+  displayName        String?          @map("display_name")
+  verificationStatus String?          @map("verification_status")
+  qualityRating      String?          @map("quality_rating")
+  messagingStatus    String?          @map("messaging_status")
+  /// CLOUD_API or ON_PREMISE - coexistence numbers report differently.
+  platformType       String?          @map("platform_type")
+  throughputLevel    String?          @map("throughput_level")
+  /// Catalog visibility in chat, from whatsapp_commerce_settings.
+  catalogVisible     Boolean?         @map("catalog_visible")
+  cartEnabled        Boolean?         @map("cart_enabled")
+  status             ConnectionStatus @default(PENDING)
+  isDefault          Boolean          @default(false) @map("is_default")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  account WhatsappAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@index([whatsappAccountId])
+  @@map("whatsapp_phone_numbers")
+}
+
+/// A Meta Commerce catalog connected to a WABA.
+model Catalog {
+  id                String           @id @default(uuid())
+  whatsappAccountId String           @map("whatsapp_account_id")
+  metaCatalogId     String           @unique @map("meta_catalog_id")
+  name              String
+  vertical          String?
+  currency          String           @default("INR")
+  status            ConnectionStatus @default(CONNECTED)
+  isDefault         Boolean          @default(false) @map("is_default")
+  lastSyncedAt      DateTime?        @map("last_synced_at")
+  lastSyncStatus    SyncRunStatus?   @map("last_sync_status")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  account     WhatsappAccount  @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  products    Product[]
+  collections Collection[]
+  syncLogs    CatalogSyncLog[]
+
+  @@index([whatsappAccountId])
+  @@map("catalogs")
+}
+
+/// A local merchandising category. Meta's own product `category` is a
+/// free-text string, so the taxonomy lives here and is pushed on publish.
+model Category {
+  id          String   @id @default(uuid())
+  businessId  String   @map("business_id")
+  name        String
+  slug        String
+  description String?
+  parentId    String?  @map("parent_id")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  business Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@unique([businessId, slug])
+  @@index([businessId])
+  @@map("categories")
+}
+
+/// A Meta product set. The UI calls these collections.
+model Collection {
+  id               String     @id @default(uuid())
+  catalogId        String     @map("catalog_id")
+  metaProductSetId String?    @unique @map("meta_product_set_id")
+  name             String
+  description      String?
+  /// Meta product-set filter JSON. Null means a manual, hand-picked set.
+  filter           Json?
+  syncStatus       SyncStatus @default(PENDING) @map("sync_status")
+  syncError        String?    @map("sync_error")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  catalog  Catalog             @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  products CollectionProduct[]
+
+  @@index([catalogId])
+  @@map("collections")
+}
+
+model CollectionProduct {
+  collectionId String   @map("collection_id")
+  productId    String   @map("product_id")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, productId])
+  @@index([productId])
+  @@map("collection_products")
+}
+
+model Product {
+  id                String   @id @default(uuid())
+  catalogId         String   @map("catalog_id")
+  /// Meta's numeric product id. Null until the product is published.
+  metaProductId     String?  @map("meta_product_id")
+  /// Our own SKU. This is the id used in WhatsApp product messages.
+  retailerId        String   @map("retailer_id")
+  name              String
+  description       String
+  /// Major units (e.g. 2500000.00 rupees). Converted to Meta minor units on push.
+  price             Decimal  @db.Decimal(14, 2)
+  currency          String   @default("INR")
+  salePrice         Decimal? @map("sale_price") @db.Decimal(14, 2)
+  salePriceStartsAt DateTime? @map("sale_price_starts_at")
+  salePriceEndsAt   DateTime? @map("sale_price_ends_at")
+  availability      ProductAvailability @default(IN_STOCK)
+  condition         ProductCondition    @default(NEW)
+  brand             String?
+  url               String?
+  categoryId        String?  @map("category_id")
+  /// Free-text category string sent to Meta, denormalised from Category.
+  metaCategory      String?  @map("meta_category")
+  /// Primary image URL, mirrored from the ProductMedia row marked primary.
+  imageUrl          String?  @map("image_url")
+  /// Vertical-specific attributes (property type, bedrooms, area...).
+  customFields      Json?    @map("custom_fields")
+  /// Draft products are local only and are never pushed to Meta.
+  isDraft           Boolean  @default(true) @map("is_draft")
+  isActive          Boolean  @default(true) @map("is_active")
+  /// Meta's review verdict for the item, e.g. approved / rejected.
+  metaStatus        String?  @map("meta_status")
+  metaErrors        Json?    @map("meta_errors")
+  syncStatus        SyncStatus @default(PENDING) @map("sync_status")
+  syncError         String?    @map("sync_error")
+  lastSyncedAt      DateTime?  @map("last_synced_at")
+  /// Soft delete: set when Meta deletion succeeded but we keep the history.
+  deletedAt         DateTime?  @map("deleted_at")
+  createdBy         String?    @map("created_by")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  catalog     Catalog             @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  category    Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  media       ProductMedia[]
+  collections CollectionProduct[]
+
+  @@unique([catalogId, retailerId])
+  @@index([catalogId, syncStatus])
+  @@index([categoryId])
+  @@index([name])
+  @@map("products")
+}
+
+/// Images and videos attached to a product. Meta ingests images by URL;
+/// videos are kept for WhatsApp media messages to customers.
+model ProductMedia {
+  id         String    @id @default(uuid())
+  productId  String    @map("product_id")
+  kind       MediaKind @default(IMAGE)
+  /// Public URL that Meta (and the browser) fetches.
+  url        String
+  /// Path on disk relative to UPLOAD_DIR, so the file can be deleted later.
+  storageKey String?   @map("storage_key")
+  mimeType   String?   @map("mime_type")
+  sizeBytes  Int?      @map("size_bytes")
+  width      Int?
+  height     Int?
+  isPrimary  Boolean   @default(false) @map("is_primary")
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_media")
+}
+
+model CatalogSyncLog {
+  id          String        @id @default(uuid())
+  catalogId   String        @map("catalog_id")
+  status      SyncRunStatus @default(RUNNING)
+  /// manual | scheduled
+  trigger     String        @default("manual")
+  created     Int           @default(0)
+  updated     Int           @default(0)
+  deleted     Int           @default(0)
+  unchanged   Int           @default(0)
+  conflicts   Int           @default(0)
+  failed      Int           @default(0)
+  errors      Json?
+  startedAt   DateTime      @default(now()) @map("started_at")
+  finishedAt  DateTime?     @map("finished_at")
+  triggeredBy String?       @map("triggered_by")
+
+  catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@index([catalogId, startedAt])
+  @@map("catalog_sync_logs")
+}
+
+/// Who did what. Written for every state-changing action in the panel.
+model AuditLog {
+  id        String   @id @default(uuid())
+  userEmail String?  @map("user_email")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  /// success | failure
+  result    String   @default("success")
+  message   String?
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+/// Keyword-triggered automatic replies, evaluated on every inbound message.
+model AutoReplyRule {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  name       String
+  /// Lower-cased keywords; an inbound message matching any one fires the rule.
+  keywords   String[] @default([])
+  /// exact | contains | regex
+  matchType  String   @default("contains") @map("match_type")
+  /// text | catalog | product | product_list
+  replyType  String   @default("text") @map("reply_type")
+  replyText  String?  @map("reply_text")
+  /// Retailer ids used for product / product_list replies.
+  productRetailerIds String[] @default([]) @map("product_retailer_ids")
+  collectionId    String?  @map("collection_id")
+  isActive        Boolean  @default(true) @map("is_active")
+  priority        Int      @default(0)
+  /// Do not fire more than once per this many minutes per customer.
+  cooldownMinutes Int      @default(60) @map("cooldown_minutes")
+  lastFiredAt     DateTime? @map("last_fired_at")
+  timesFired      Int      @default(0) @map("times_fired")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, isActive])
+  @@map("auto_reply_rules")
+}
+
+/// Per-customer cooldown ledger so an auto-reply rule cannot spam someone.
+model AutoReplyDispatch {
+  id          String   @id @default(uuid())
+  ruleId      String   @map("rule_id")
+  phoneNumber String   @map("phone_number")
+  firedAt     DateTime @default(now()) @map("fired_at")
+
+  @@unique([ruleId, phoneNumber])
+  @@index([firedAt])
+  @@map("auto_reply_dispatches")
+}

@@ -1,0 +1,17 @@
+{
+  "name": "meta-whatsapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Two-way WhatsApp support inbox on the official Meta WhatsApp Cloud API",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix client install && npm --prefix server run prisma:generate",
+    "dev": "node scripts/dev.js",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "start": "npm --prefix server run start:prod",
+    "db:push": "npm --prefix server run prisma:push",
+    "test": "npm --prefix server test"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "64fb9b0b-73ef-42da-b1b8-fb4642b79b8b",
+    "whatsappAccountId": "f2d99eef-4381-46c2-bf72-5e5295f47ae0",
+    "phoneNumberId": "933109176552045",
+    "phoneNumber": "+91 92631 43179",
+    "displayName": "RealAura",
+    "verificationStatus": "EXPIRED",
+    "qualityRating": "UNKNOWN",
+    "messagingStatus": "PENDING",
+    "platformType": "NOT_APPLICABLE",
+    "throughputLevel": "NOT_APPLICABLE",
+    "catalogVisible": null,
+    "cartEnabled": null,
+    "status": "PENDING",
+    "isDefault": true,
+    "createdAt": "2026-09-10T09:12:56.867Z",
+    "updatedAt": "2026-09-10T13:31:55.114Z"
+  },
+  {
+    "id": "202d6a69-c581-4724-8e7d-947d2e0899e3",
+    "whatsappAccountId": "f2d99eef-4381-46c2-bf72-5e5295f47ae0",
+    "phoneNumberId": "914098718459659",
+    "phoneNumber": "+91 81400 87463",
+    "displayName": "RealAura",
+    "verificationStatus": "EXPIRED",
+    "qualityRating": "GREEN",
+    "messagingStatus": "CONNECTED",
+    "platformType": "CLOUD_API",
+    "throughputLevel": "STANDARD",
+    "catalogVisible": null,
+    "cartEnabled": null,
+    "status": "CONNECTED",
+    "isDefault": false,
+    "createdAt": "2026-09-10T09:12:58.070Z",
+    "updatedAt": "2026-09-10T13:31:56.260Z"
+  }
+]

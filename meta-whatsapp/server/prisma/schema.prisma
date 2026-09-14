@@ -1,0 +1,117 @@
+// Meta WhatsApp Cloud API inbox - PostgreSQL (Supabase) schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum MessageDirection {
+  INCOMING
+  OUTGOING
+}
+
+enum MessageStatus {
+  PENDING
+  RECEIVED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  phoneNumber   String   @unique @map("phone_number")
+  name          String?
+  profileName   String?  @map("profile_name")
+  waId          String?  @map("wa_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+
+  @@map("customers")
+}
+
+model Conversation {
+  id             String             @id @default(uuid())
+  customerId     String             @map("customer_id")
+  phoneNumber    String             @map("phone_number")
+  status         ConversationStatus @default(OPEN)
+  lastMessage    String?            @map("last_message")
+  lastMessageAt  DateTime?          @map("last_message_at")
+  // Timestamp of the newest *customer* message: the 24h service window anchor.
+  lastInboundAt  DateTime?          @map("last_inbound_at")
+  unreadCount    Int                @default(0) @map("unread_count")
+  assignedTo     String?            @map("assigned_to")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([customerId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id @default(uuid())
+  conversationId String           @map("conversation_id")
+  // Unique so a replayed Meta webhook cannot insert the same message twice.
+  metaMessageId  String?          @unique @map("meta_message_id")
+  direction      MessageDirection
+  messageType    String           @default("text") @map("message_type")
+  messageText    String?          @map("message_text")
+  mediaId        String?          @map("media_id")
+  mediaUrl       String?          @map("media_url")
+  mediaMimeType  String?          @map("media_mime_type")
+  mediaFilename  String?          @map("media_filename")
+  caption        String?
+  contextId      String?          @map("context_id")
+  status         MessageStatus    @default(PENDING)
+  timestamp      DateTime         @default(now())
+  errorCode      String?          @map("error_code")
+  errorTitle     String?          @map("error_title")
+  errorMessage   String?          @map("error_message")
+  sentBy         String?          @map("sent_by")
+  rawPayload     Json?            @map("raw_payload")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, timestamp])
+  @@map("messages")
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  role         String   @default("admin")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("admin_users")
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  eventType String   @map("event_type")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("webhook_logs")
+}
