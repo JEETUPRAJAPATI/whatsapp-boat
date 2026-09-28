@@ -29,11 +29,6 @@ export interface AppConfig {
   isProduction: boolean;
   clientOrigin: string[];
   publicUrl: string;
-  authEnabled: boolean;
-  jwtSecret: string;
-  jwtExpiresIn: string;
-  adminEmail: string;
-  adminPassword: string;
   encryptionKey: string;
   webhookLogging: boolean;
   uploadDir: string;
@@ -71,13 +66,6 @@ export default (): AppConfig => {
       .filter(Boolean),
     publicUrl: stripTrailingSlash(process.env.APP_PUBLIC_URL || `http://localhost:${port}`),
 
-    // Opt-out, not opt-in: a fresh deployment is protected unless someone
-    // deliberately writes AUTH_ENABLED=false.
-    authEnabled: bool(process.env.AUTH_ENABLED, true),
-    jwtSecret: process.env.JWT_SECRET || '',
-    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '12h',
-    adminEmail: process.env.ADMIN_EMAIL || '',
-    adminPassword: process.env.ADMIN_PASSWORD || '',
     encryptionKey: process.env.ENCRYPTION_KEY || '',
     webhookLogging: bool(process.env.WEBHOOK_LOGGING, false),
 

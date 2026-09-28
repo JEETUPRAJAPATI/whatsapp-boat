@@ -5,7 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/http-exception.filter';
-import { MetaConfig } from './config/configuration';
+import { MetaSettingsService } from './config/meta-settings.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -49,7 +49,7 @@ async function bootstrap() {
   // ---------------------------------------------------------------------
   // Startup checks - say clearly what will not work, before it fails
   // ---------------------------------------------------------------------
-  const meta = config.get<MetaConfig>('meta');
+  const meta = app.get(MetaSettingsService).getSettings();
   const publicUrl = config.get<string>('publicUrl');
 
   logger.log(`Server listening on http://localhost:${port}`);
@@ -78,12 +78,6 @@ async function bootstrap() {
     logger.warn(
       `APP_PUBLIC_URL is ${publicUrl}. Meta cannot fetch product images or deliver webhooks to ` +
         'localhost - use a tunnel (ngrok / cloudflared) for local development.',
-    );
-  }
-  if (!config.get<boolean>('authEnabled')) {
-    logger.warn(
-      `AUTH_ENABLED=false - the admin panel is OPEN. Anyone who can reach port ${port} can edit ` +
-        'your live catalog and send WhatsApp messages as your business. Do not expose this.',
     );
   }
 }

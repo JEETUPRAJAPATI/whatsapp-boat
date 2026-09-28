@@ -1,5 +1,4 @@
 import { io } from 'socket.io-client';
-import { tokenStore } from './api';
 
 let socket = null;
 
@@ -16,7 +15,6 @@ export function getSocket() {
   socket = io({
     path: '/socket.io',
     transports: ['websocket', 'polling'],
-    auth: { token: tokenStore.get() },
     reconnectionDelay: 800,
     reconnectionDelayMax: 5000,
   });

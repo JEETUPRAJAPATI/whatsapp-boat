@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
 import { AccountService } from './services/account.service';
 import { AutoReplyService } from './services/auto-reply.service';
 import { ConversationService } from './services/conversation.service';
@@ -11,7 +10,6 @@ import { WhatsappController } from './whatsapp.controller';
 import { WhatsappGateway } from './whatsapp.gateway';
 
 @Module({
-  imports: [AuthModule],
   controllers: [WebhookController, WhatsappController],
   providers: [
     AccountService,

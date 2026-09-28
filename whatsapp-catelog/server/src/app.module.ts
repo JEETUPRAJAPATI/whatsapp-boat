@@ -6,7 +6,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import { AuditModule } from './audit/audit.module';
-import { AuthModule } from './auth/auth.module';
 import { AutomationModule } from './automation/automation.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CommonModule } from './common/common.module';
@@ -52,7 +51,6 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     StorageModule,
     MetaModule,
     AuditModule,
-    AuthModule,
     WhatsappModule,
     CatalogModule,
     AutomationModule,

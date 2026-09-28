@@ -1,0 +1,318 @@
+################################################################################
+#  ENV EXPLANATION
+#  Dono .env files ki exact lines. Har line ke NEECHE uska matlab.
+#
+#  Rule: poore codebase me sirf ek file process.env ko chhuti hai ->
+#        src/config/configuration.ts
+#        (DATABASE_URL / DIRECT_URL exception hain - wo prisma/schema.prisma
+#         se padhe jaate hain)
+#  Jo variable configuration.ts me nahi hai = app ke liye bekaar.
+################################################################################
+
+
+################################################################################
+#  FILE 1:  meta-whatsapp/server/.env
+#  (chhota app: single WhatsApp number ka inbox. Token .env me hardcode,
+#   DB me accounts nahi rakhta.)
+################################################################################
+
+PORT=4000
+# Backend kis port pe chalega. Code ka default bhi 4000 hai.
+# -> OPTIONAL
+
+NODE_ENV=development
+# development / production. Default 'development'.
+# -> OPTIONAL
+
+CLIENT_ORIGIN=http://localhost:5173
+# CORS allow-list. Comma se multiple URL de sakte ho.
+# Frontend Vite 5173 pe chalta hai, isliye yahi value chahiye.
+# Tunnel/domain se frontend khologe to wo URL bhi yahan add karna padega.
+# -> ZAROORI
+
+DATABASE_URL="postgresql://postgres.uoiukbqexidvrxhlfivg:9%23%24Nr%2Cg5ZDpZpmG@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+# Supabase POOLED connection (port 6543, pgbouncer=true).
+# Saari normal runtime queries isi se jaati hain.
+# -> ZAROORI. Iske bina app start hi nahi hoga.
+
+DIRECT_URL="postgresql://postgres.uoiukbqexidvrxhlfivg:9%23%24Nr%2Cg5ZDpZpmG@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
+# Supabase DIRECT connection (port 5432). Sirf `prisma migrate` /
+# `prisma db push` ke liye, kyunki migration pgbouncer se nahi chalti.
+# -> ZAROORI (kam se kam migration ke waqt)
+# NOTE: password percent-encoded hai (9#$Nr,g5ZDpZpmG).
+#       # -> %23, $ -> %24, comma -> %2C. Ise mat todna.
+
+META_WHATSAPP_ACCESS_TOKEN=EAAOrfJnUYmABSUIHUAKKmfXW2jsvtGk0ytH93VlNT8gJGmSXZBtcEruYG4zI2GMzsbWkBvxV2PH8DaAZBEJcZBaxaDx6d05dU8oDAyZBCu892TlibM0XKal6wd2F5dcze7ZBzziID1q8KHuCJgZAGCjQ4FljePEkGowa7dQQKv2PlJavabcRDlEWUc73ylLQZDZD
+# Graph API ka Bearer token. Message bhejne, media upload/download - sab me
+# use hota hai (whatsapp/services/whatsapp.service.ts).
+# -> ZAROORI. Ye is file ki sabse sensitive value hai.
+
+META_WHATSAPP_PHONE_NUMBER_ID=914098718459659
+# Jis number se message jaayega uska Meta ID.
+# Send-message aur media-upload dono ka URL isi se banta hai.
+# -> ZAROORI
+
+META_WHATSAPP_BUSINESS_ACCOUNT_ID=1936192610625973
+# WABA id. Code me sirf /status endpoint me dikhane ke liye use hoti hai.
+# -> OPTIONAL (informational). Hataoge to status me null aayega, bas.
+
+META_WHATSAPP_API_VERSION=v25.0
+# Graph API version. Code ka default bhi v25.0 hai.
+# Rakhna better - version bump = sirf env change, deploy nahi.
+# -> OPTIONAL
+
+META_WHATSAPP_VERIFY_TOKEN=whatsapp_boat_verify_9f3c2a71
+# Meta jab webhook URL verify karta hai (GET ?hub.verify_token=...) to isse
+# match karta hai. Meta dashboard me EXACTLY yahi value honi chahiye.
+# -> ZAROORI (warna webhook subscribe hi nahi hoga)
+
+META_APP_SECRET=7b83278ef62c12ca3f51c0ba0e7258a6
+# Incoming webhook ke X-Hub-Signature-256 header ko verify karne ke liye.
+# Iske bina koi bhi tumhare webhook pe fake message bhej sakta hai.
+# -> ZAROORI (production me to must)
+
+AUTH_ENABLED=false
+# Set to false to skip the sign-in screen and run the inbox with no login.
+# WARNING: with this off, anyone who can reach this port can read every
+# conversation and send WhatsApp messages as your business. Keep it true for
+# anything reachable from the internet (including a public tunnel URL).
+# Code ka default 'true' hai - yaani ye line HATA doge to login ON ho jayega.
+# Abhi false hai, isliye neeche wale 4 variables ka abhi koi asar nahi.
+
+JWT_SECRET=dev_only_change_me_4f8b1c9e2a7d6053b1e8c4a9f2760d35
+JWT_EXPIRES_IN=12h
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=ChangeMe123!
+# Ye chaaron sirf tab kaam aate hain jab AUTH_ENABLED=true ho.
+# Abhi -> IGNORE kar sakte ho.
+# Jis din auth on karoge: JWT_SECRET aur ADMIN_PASSWORD dono badalne honge,
+# abhi dono placeholder hain.
+
+WEBHOOK_LOGGING=true
+# Har incoming webhook ka raw payload log me print karta hai. Debug ke liye.
+# Code ka default false hai.
+# -> OPTIONAL. Production me false kar dena (payload me customer data hota hai).
+
+# https://realtru.in/crm/admin/whatsapp/whatsapp_webhook.php
+# ^ Ye sirf ek comment hai (# se start), code isko padhta hi nahi.
+#   Purane webhook URL ka note hai.
+#   -> IGNORE / delete kar sakte ho.
+
+
+################################################################################
+#  FILE 2:  whatsapp-catelog/server/.env
+#  (bada app: catalog + multi-account. Accounts aur unke tokens DATABASE me
+#   encrypted store hote hain - Embedded Signup se aate hain. Neeche ke Meta
+#   values sirf "fallback / seed" ka kaam karte hain.)
+################################################################################
+
+# Local development configuration. NEVER commit this file.
+# Database, Meta app secret, access token and verify token are carried over
+# from the existing meta-whatsapp inbox so both apps talk to the same
+# WhatsApp Business Account and the same Supabase database.
+#
+# !! YE UPAR WALA COMMENT GALAT HAI: "same WhatsApp Business Account" nahi hai.
+#    catalog app : WABA 1701948667658303 , phone 1068604713005038
+#    meta app    : WABA 1936192610625973 , phone 914098718459659
+#    Ye do ALAG WABA / alag number hain. DB aur app-secret zaroor same hain.
+
+PORT=4100
+# Alag port, taaki dono app saath chal saken (meta=4000, catalog=4100).
+# Code ka default bhi 4100 hai.
+# -> OPTIONAL par rakho
+
+NODE_ENV=development
+# -> OPTIONAL (default development)
+
+CLIENT_ORIGIN=https://european-electron-options-finding.trycloudflare.com
+# CORS allow-list.
+# !! WARNING: abhi sirf tunnel URL hai. Agar frontend localhost:5174 se
+#    chalate ho to browser CORS error dega, kyunki ye env code ke default
+#    (http://localhost:5174) ko override kar deta hai.
+#    Behtar: CLIENT_ORIGIN=http://localhost:5174,https://<tunnel-url>
+# -> ZAROORI
+
+APP_PUBLIC_URL=https://movie-corps-aid-finder.trycloudflare.com
+# Replace with your public tunnel URL before creating products: Meta's crawler
+# must be able to download product images from this host.
+# Do kaam karta hai:
+#   1. Product images ke absolute URL banata hai - Meta ka crawler in images ko
+#      khud download karta hai, isliye localhost yahan kaam nahi karega.
+#   2. Startup log me webhook URL print karta hai.
+# main.ts me check hai: localhost hua to warning deta hai.
+# !! Ye aur CLIENT_ORIGIN abhi DO ALAG tunnel URL hain. Tunnel restart pe
+#    dono badalte hain - har baar dono update karne padenge.
+# -> ZAROORI (product/catalog create karne ke liye)
+
+DATABASE_URL="postgresql://postgres.uoiukbqexidvrxhlfivg:9%23%24Nr%2Cg5ZDpZpmG@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DIRECT_URL="postgresql://postgres.uoiukbqexidvrxhlfivg:9%23%24Nr%2Cg5ZDpZpmG@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
+# Bilkul meta-whatsapp jaisa hi - same Supabase project, same credentials.
+# DATABASE_URL = pooled (6543) runtime queries ke liye
+# DIRECT_URL   = direct (5432) prisma migrate ke liye
+# -> DONO ZAROORI
+# !! NOTE: dono app ek hi Supabase DB use kar rahe hain (schema alag hai).
+#    Ek app ka `prisma migrate reset` doosre ki tables uda sakta hai - dhyan se.
+
+META_APP_ID=1032976575259232
+# Facebook App ID. 3 jagah use hota hai: token exchange (client_id),
+# app access token banane me (appId|appSecret), aur "kaunsa app is WABA pe
+# subscribed hai" check karne me.
+# -> ZAROORI (agar Embedded Signup use karna hai)
+
+META_APP_SECRET=7b83278ef62c12ca3f51c0ba0e7258a6
+# Token exchange (client_secret), app access token, aur webhook signature
+# verify - teeno ke liye. Same value meta-whatsapp me bhi hai kyunki ek hi
+# Facebook App hai.
+# -> ZAROORI
+
+META_CONFIG_ID=770828739458560
+# Embedded Signup configuration id (Meta App > WhatsApp > Configuration).
+# Iske bina "Connect with Facebook" button disabled rehta hai -
+# embedded-signup.service.ts explicitly "META_CONFIG_ID missing" bolta hai.
+# -> ZAROORI agar signup flow chahiye, warna ignore
+
+META_API_VERSION=v25.0
+# Graph API version. Default bhi v25.0.
+# -> OPTIONAL
+
+META_GRAPH_BASE_URL=https://graph.facebook.com
+# Graph API ka base URL. Default bhi yahi hai.
+# Sirf tab badlo jab mock/proxy Graph server use karna ho.
+# -> OPTIONAL
+
+META_WEBHOOK_VERIFY_TOKEN=whatsapp_boat_verify_9f3c2a71
+# Webhook verification token.
+# Code fallback karta hai: META_WEBHOOK_VERIFY_TOKEN ya
+# META_WHATSAPP_VERIFY_TOKEN - dono naam chalte hain (taaki purana .env
+# copy-paste ho jaye).
+# -> ZAROORI
+
+META_ACCESS_TOKEN=EAAOrfJnUYmABSeP82ZC5qR4S9ZB6nR1EJ27fDxN0f7qvXbPdszwmQbWDWjT2unZBtXqRCKhDY5HWvw6a7IGxGFC38SNVTEAnIamZBzmiGuUvauWSO9OkHFOe70eqOLMvtinNrCiWCZAR6ZCFNGpAqGZA5HrzC3grvMBR6lNwhZBk7pYT7x6wGEie9f1TsU2BxAZDZD
+# FALLBACK access token. Jab kisi WABA ka apna encrypted token DB me nahi
+# hota, tab meta-token.service.ts isko use karta hai.
+# Code META_ACCESS_TOKEN ya META_WHATSAPP_ACCESS_TOKEN - dono padhta hai.
+# -> ZAROORI (jab tak Embedded Signup se accounts connect nahi ho jaate)
+
+META_BUSINESS_ID=889266433277890
+# Business Manager id. Sirf fallback: jab WABA ke response me
+# owner_business_info na mile, tab account ka business id isse bharta hai.
+# -> OPTIONAL
+
+META_WABA_ID=1701948667658303
+# !! IS APP ME KAHIN USE NAHI HOTA.
+#    configuration.ts ise padhta zaroor hai (meta.wabaId), par poore codebase
+#    me koi consumer nahi. WABA id DB ke Account record se aati hai.
+# -> HATA SAKTE HO, kuch nahi tootega.
+
+META_PHONE_NUMBER_ID=1068604713005038
+# !! IS APP ME KAHIN USE NAHI HOTA.
+#    Same kahani - meta.phoneNumberId ka koi consumer nahi. Phone number DB
+#    ke Account record se aata hai.
+# -> HATA SAKTE HO, kuch nahi tootega.
+
+META_CATALOG_ID=3264313350624420
+# Fallback catalog. Agar WABA pe koi catalog list nahi hota, to ye id
+# directly fetch karke attach karne ki koshish hoti hai
+# (whatsapp/services/account.service.ts).
+# -> OPTIONAL par useful
+
+META_BUSINESS_NAME=My Business
+# Account ka display naam, jab Meta se naam na mile. Default bhi 'My Business'.
+# -> OPTIONAL / cosmetic
+
+ENCRYPTION_KEY=141baae218da122a2273f263a6d0d7480baa898512e9c79f654116c2761ce43c
+# 64 hex chars = 32 bytes. Isse DB me store hone wale WhatsApp access tokens
+# encrypt/decrypt hote hain (common/crypto.service.ts). main.ts startup pe
+# iski presence check karta hai.
+# -> ZAROORI
+# !! Ise KABHI mat badalna. Badal diya to DB ke saare purane encrypted tokens
+#    permanently unreadable ho jayenge - saare accounts dobara connect karne
+#    padenge.
+
+AUTH_ENABLED=false
+# Same kahani jaisa meta-whatsapp me. Code ka default 'true' hai.
+# !! Par yaad rakho: is app ka APP_PUBLIC_URL public tunnel hai, yaani
+#    internet se reachable hai. Aise me false rakhna risky hai.
+
+JWT_SECRET=dev_only_change_me_4f8b1c9e2a7d6053b1e8c4a9f2760d35
+JWT_EXPIRES_IN=12h
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=ChangeMe123!
+# Sirf AUTH_ENABLED=true hone pe kaam ke. Abhi -> IGNORE.
+
+UPLOAD_DIR=../uploads
+# Product images/videos kahan save honge. process.cwd() se resolve hota hai,
+# yaani server/ se ek level upar. Ye folder static bhi serve hota hai.
+# Default bhi ../uploads hai.
+# -> OPTIONAL
+
+MAX_IMAGE_MB=8
+# Image upload size limit MB me. Default 8.
+# -> OPTIONAL
+
+MAX_VIDEO_MB=64
+# Video upload size limit MB me. Default 64.
+# -> OPTIONAL
+
+CATALOG_SYNC_ENABLED=true
+# Meta catalog ko periodically sync karne wala cron on/off. Default true.
+# -> OPTIONAL
+
+CATALOG_SYNC_CRON=0 30 2 * * *
+# 6-field cron (sec min hour day month weekday) = roz raat 2:30 baje.
+# Default bhi yahi.
+# -> OPTIONAL
+
+AUTO_REPLY_ENABLED=true
+# Incoming message pe auto-reply service chalegi ya nahi. Default true.
+# -> OPTIONAL
+
+WEBHOOK_LOGGING=true
+# Raw webhook payload logging. Default false.
+# -> OPTIONAL (debug ke liye)
+
+META_TEST_TOKEN=EAAOrfJnUYmABSRA6D2jSehCXZCBGqb3rcAPMzifzBO3LYDZAmap0ZBWRl174KXHM1iufbcwxZAOTgrHOLQtFcqsaAn5THFQWlRhDww1pjD4mwZC9qa4vWwBNgSRDTo2iJ3AY4e6dW5XSjrZAdLjdZCdbbuN2AdDDXPS3Xl2wsSTIaJo2ES3FowDiVN5eFTW0gZDZD
+# !! DEAD VARIABLE - poore codebase me kahin use NAHI ho raha,
+#    configuration.ts me bhi nahi hai.
+# -> DELETE KAR DO. Ye bas ek pada hua live token hai = bekaar ka risk.
+
+
+################################################################################
+#  QUICK SUMMARY
+################################################################################
+#
+#  meta-whatsapp/server/.env
+#    ZAROORI  : DATABASE_URL, DIRECT_URL, CLIENT_ORIGIN,
+#               META_WHATSAPP_ACCESS_TOKEN, META_WHATSAPP_PHONE_NUMBER_ID,
+#               META_WHATSAPP_VERIFY_TOKEN, META_APP_SECRET
+#    OPTIONAL : PORT, NODE_ENV, META_WHATSAPP_API_VERSION,
+#               META_WHATSAPP_BUSINESS_ACCOUNT_ID, WEBHOOK_LOGGING
+#    ABHI     : JWT_SECRET, JWT_EXPIRES_IN, ADMIN_EMAIL, ADMIN_PASSWORD
+#    BEKAAR     (kyunki AUTH_ENABLED=false)
+#    DELETE   : aakhri wala "# realtru.in" comment
+#
+#  whatsapp-catelog/server/.env
+#    ZAROORI  : DATABASE_URL, DIRECT_URL, CLIENT_ORIGIN, APP_PUBLIC_URL,
+#               ENCRYPTION_KEY, META_ACCESS_TOKEN, META_APP_ID,
+#               META_APP_SECRET, META_CONFIG_ID, META_WEBHOOK_VERIFY_TOKEN
+#    OPTIONAL : PORT, NODE_ENV, META_API_VERSION, META_GRAPH_BASE_URL,
+#               META_BUSINESS_ID, META_CATALOG_ID, META_BUSINESS_NAME,
+#               UPLOAD_DIR, MAX_IMAGE_MB, MAX_VIDEO_MB, CATALOG_SYNC_ENABLED,
+#               CATALOG_SYNC_CRON, AUTO_REPLY_ENABLED, WEBHOOK_LOGGING
+#    ABHI     : JWT_SECRET, JWT_EXPIRES_IN, ADMIN_EMAIL, ADMIN_PASSWORD
+#    BEKAAR     (kyunki AUTH_ENABLED=false)
+#    HATA DO  : META_TEST_TOKEN, META_WABA_ID, META_PHONE_NUMBER_ID
+#
+#
+#  DHYAN DENE WALI BAATEIN
+#  1. Dono .env gitignored hain (check kar liya) - lekin YE FILE (explain.txt)
+#     gitignored NAHI hai, aur isme saare live tokens/secrets hain.
+#     Isko commit mat karna, ya .gitignore me explain.txt add kar do.
+#  2. AUTH_ENABLED=false + public tunnel URL = koi bhi tumhari saari chats
+#     padh sakta hai aur tumhare business ke naam se message bhej sakta hai.
+#     Public karne se pehle true karo.
+#  3. Tunnel URLs (trycloudflare) restart pe badalte hain - CLIENT_ORIGIN aur
+#     APP_PUBLIC_URL dono, aur Meta dashboard me webhook URL bhi update karna.
+#  4. Access token agar short-lived hai to ~60 din me expire hoga.
+#     Permanent System User token banana behtar hai.
+################################################################################

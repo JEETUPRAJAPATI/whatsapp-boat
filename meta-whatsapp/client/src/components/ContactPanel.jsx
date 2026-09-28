@@ -5,7 +5,7 @@ import { fullDate, phoneOf, windowRemaining } from '../lib/format';
 import { useWa } from '../store';
 
 export default function ContactPanel({ conversation, onClose }) {
-  const { patchConversation, user } = useWa();
+  const { patchConversation } = useWa();
   const [busy, setBusy] = useState(false);
 
   const name = conversation.name || phoneOf(conversation.phoneNumber);
@@ -72,20 +72,6 @@ export default function ContactPanel({ conversation, onClose }) {
       </div>
 
       <div className="info-actions">
-        {conversation.assignedTo === (user && user.email) ? (
-          <button className="btn-ghost" disabled={busy} onClick={() => run({ assignedTo: null })}>
-            Unassign me
-          </button>
-        ) : (
-          <button
-            className="btn-ghost"
-            disabled={busy}
-            onClick={() => run({ assignedTo: user && user.email })}
-          >
-            Assign to me
-          </button>
-        )}
-
         {conversation.status === 'CLOSED' ? (
           <button className="btn-ghost" disabled={busy} onClick={() => run({ status: 'OPEN' })}>
             Reopen conversation

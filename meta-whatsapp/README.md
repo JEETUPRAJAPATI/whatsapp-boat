@@ -55,9 +55,6 @@ cp server/.env.example server/.env
 | `META_APP_SECRET` | App secret from App settings > Basic. Enables webhook signature checks |
 | `DATABASE_URL` | Postgres pooled connection (Supabase port 6543) |
 | `DIRECT_URL` | Postgres direct connection (port 5432), used by Prisma migrations |
-| `AUTH_ENABLED` | `false` skips the sign-in screen entirely. See the warning below |
-| `JWT_SECRET` | Long random string for admin session tokens |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeded on first boot; change before going live |
 
 > **Password encoding:** if your database password contains `#`, `$`, `,`, `@`, `/` or `:`
 > it must be percent-encoded in the URL (`#` -> `%23`, `$` -> `%24`, `,` -> `%2C`).
@@ -79,18 +76,12 @@ npx prisma db push       # or: npx prisma migrate dev
 npm run dev              # starts the API on :4000 and the UI on :5173
 ```
 
-Open <http://localhost:5173> and sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+Open <http://localhost:5173> - the inbox loads directly, there is no sign-in screen.
 
-### Running without a login
-
-Set `AUTH_ENABLED=false` in `server/.env` to drop the sign-in screen and open the
-inbox directly. Handy on a laptop.
-
-> **Do not do this on anything the internet can reach** - a public tunnel URL
-> included. With auth off, every admin route is open: anyone with the address can
+> **There is no authentication on any route.** Anyone who can reach the server can
 > read all customer conversations and send WhatsApp messages from your business
-> number. Set `AUTH_ENABLED=true` before deploying. The server prints a warning on
-> every boot while it is off.
+> number. Do not expose this to the internet (including a public tunnel URL)
+> without putting your own access control in front of it.
 
 The Vite dev server proxies `/api` and `/socket.io` to the backend, so the browser
 never needs to know the API's address or hold any Meta credential.
@@ -178,12 +169,10 @@ Use `POST /api/whatsapp/send-template` with an approved template instead.
 
 ## 6. API reference
 
-All `/api/whatsapp/*` routes except the webhook require `Authorization: Bearer <token>`.
+None of the `/api/whatsapp/*` routes require authentication.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/auth/login` | Sign in, returns a JWT |
-| `GET` | `/api/auth/me` | Current admin |
 | `GET` | `/api/whatsapp/webhook` | Meta verification handshake (public) |
 | `POST` | `/api/whatsapp/webhook` | Meta event delivery (public, HMAC-verified) |
 | `GET` | `/api/whatsapp/status` | Config health, no secrets |
@@ -211,11 +200,6 @@ All `/api/whatsapp/*` routes except the webhook require `Authorization: Bearer <
 ## 7. curl examples
 
 ```bash
-# Sign in
-TOKEN=$(curl -s -X POST http://localhost:4000/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"ChangeMe123!"}' | jq -r .accessToken)
-
 # Webhook verification (what Meta does)
 curl "http://localhost:4000/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=YOUR_VERIFY_TOKEN&hub.challenge=12345"
 
@@ -239,23 +223,22 @@ curl -X POST http://localhost:4000/api/whatsapp/webhook \
       }}]}]}'
 
 # List conversations
-curl -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/whatsapp/conversations
+curl http://localhost:4000/api/whatsapp/conversations
 
 # Reply
 curl -X POST http://localhost:4000/api/whatsapp/send-message \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/json' \
   -d '{"to":"919812345678","type":"text","message":"Hello from support"}'
 
 # Media (image, video, audio, document)
 curl -X POST http://localhost:4000/api/whatsapp/send-media \
-  -H "Authorization: Bearer $TOKEN" \
   -F 'to=919812345678' \
   -F 'caption=Here is your receipt' \
   -F 'file=@./receipt.png'
 
 # Template
 curl -X POST http://localhost:4000/api/whatsapp/send-template \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/json' \
   -d '{"to":"919812345678","template_name":"hello_world","language":"en_US"}'
 ```
 
@@ -281,9 +264,11 @@ failure details, and the 24-hour window calculation.
 * Phone numbers are masked in logs (`****5678`).
 * `POST` webhooks are validated against `X-Hub-Signature-256` when `META_APP_SECRET`
   is set; without it the check is skipped and a warning is logged.
-* Every admin route is behind a JWT guard - an unauthenticated caller cannot send a message.
-* Rate limits: 300 req/min globally, 60/min on send-message, 30/min on send-template,
-  10/min on login. The webhook is exempt so Meta is never throttled.
+* There is no authentication on any admin route - anyone who can reach the server
+  can read conversations and send messages. Put this behind your own access
+  control (VPN, reverse-proxy auth, etc.) before exposing it publicly.
+* Rate limits: 300 req/min globally, 60/min on send-message, 30/min on send-template.
+  The webhook is exempt so Meta is never throttled.
 * `meta_message_id` is unique, so a replayed webhook cannot duplicate a message.
 * `.env` is git-ignored.
 

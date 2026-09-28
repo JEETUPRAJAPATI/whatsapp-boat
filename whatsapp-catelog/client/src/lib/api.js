@@ -7,31 +7,6 @@
  */
 
 const BASE = '/api';
-const TOKEN_KEY = 'wa-catalog-token';
-
-export const tokenStore = {
-  get: () => {
-    try {
-      return localStorage.getItem(TOKEN_KEY) || '';
-    } catch {
-      return '';
-    }
-  },
-  set: (token) => {
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      /* private browsing - the session simply will not persist */
-    }
-  },
-  clear: () => {
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-    } catch {
-      /* ignore */
-    }
-  },
-};
 
 /** Error carrying the server's human-readable message and machine code. */
 export class ApiError extends Error {
@@ -44,12 +19,6 @@ export class ApiError extends Error {
   }
 }
 
-/** Called when any request comes back 401, so the app can sign the user out. */
-let onUnauthorized = null;
-export function setUnauthorizedHandler(handler) {
-  onUnauthorized = handler;
-}
-
 function query(params = {}) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -60,13 +29,9 @@ function query(params = {}) {
   return qs ? `?${qs}` : '';
 }
 
-async function request(path, { method = 'GET', body, auth = true, signal } = {}) {
+async function request(path, { method = 'GET', body, signal } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (auth) {
-    const token = tokenStore.get();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
 
   let res;
   try {
@@ -92,7 +57,6 @@ async function request(path, { method = 'GET', body, auth = true, signal } = {})
   }
 
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized) onUnauthorized();
     throw new ApiError(data?.message || `Request failed (${res.status})`, {
       status: res.status,
       code: data?.code,
@@ -114,9 +78,6 @@ function upload(path, file, fields = {}, onProgress) {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', BASE + path);
 
-    const token = tokenStore.get();
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-
     if (onProgress) {
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
@@ -131,7 +92,6 @@ function upload(path, file, fields = {}, onProgress) {
         data = { message: xhr.responseText };
       }
       if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
-      if (xhr.status === 401 && onUnauthorized) onUnauthorized();
       reject(
         new ApiError(data?.message || `Upload failed (${xhr.status})`, {
           status: xhr.status,
@@ -146,12 +106,6 @@ function upload(path, file, fields = {}, onProgress) {
 }
 
 export const api = {
-  // ---------------------------------------------------------------- auth
-  authConfig: () => request('/auth/config', { auth: false }),
-  login: (email, password) =>
-    request('/auth/login', { method: 'POST', body: { email, password }, auth: false }),
-  me: () => request('/auth/me'),
-
   // ------------------------------------------------------------ whatsapp
   status: () => request('/whatsapp/status'),
   accounts: () => request('/whatsapp/accounts'),
@@ -276,4 +230,9 @@ export const api = {
 
   // ----------------------------------------------------------------- audit
   auditLogs: (params) => request(`/audit-logs${query(params)}`),
+
+  // ---------------------------------------------------------- meta settings
+  getMetaSettings: () => request('/settings/meta'),
+  updateMetaSettings: (payload) =>
+    request('/settings/meta', { method: 'PUT', body: payload }),
 };

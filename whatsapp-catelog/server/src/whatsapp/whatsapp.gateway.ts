@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -8,7 +7,6 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { AuthService } from '../auth/auth.service';
 
 /**
  * Real-time bridge to the admin inbox.
@@ -28,44 +26,13 @@ export class WhatsappGateway implements OnGatewayConnection, OnGatewayDisconnect
   @WebSocketServer()
   server: Server;
 
-  constructor(
-    private readonly auth: AuthService,
-    private readonly config: ConfigService,
-  ) {}
-
-  /** Only authenticated admins may open a socket (unless auth is disabled). */
+  /** Every socket connection is accepted - there is no login to gate it. */
   async handleConnection(client: Socket) {
-    if (!this.config.get<boolean>('authEnabled')) {
-      client.data.user = { id: 'local-admin', email: 'admin@local' };
-      client.join('inbox');
-      return;
-    }
-
-    const token =
-      (client.handshake.auth && (client.handshake.auth as any).token) ||
-      (client.handshake.query && (client.handshake.query.token as string));
-
-    if (!token) {
-      client.emit('unauthorized', { message: 'Missing token' });
-      client.disconnect(true);
-      return;
-    }
-
-    try {
-      const payload = await this.auth.verifyToken(token);
-      client.data.user = { id: payload.sub, email: payload.email };
-      client.join('inbox');
-      this.logger.log(`Admin connected: ${payload.email}`);
-    } catch {
-      client.emit('unauthorized', { message: 'Invalid token' });
-      client.disconnect(true);
-    }
+    client.join('inbox');
   }
 
   handleDisconnect(client: Socket) {
-    if (client.data && client.data.user) {
-      this.logger.log(`Admin disconnected: ${client.data.user.email}`);
-    }
+    // No user to log - connections are anonymous.
   }
 
   /** Lets a client scope itself to one open conversation (optional). */

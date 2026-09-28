@@ -1,7 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CryptoService } from '../common/crypto.service';
 import { MetaConfig } from '../config/configuration';
+import { MetaSettingsService } from '../config/meta-settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -23,11 +23,11 @@ export class MetaTokenService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
-    private readonly config: ConfigService,
+    private readonly metaSettings: MetaSettingsService,
   ) {}
 
   private get meta(): MetaConfig {
-    return this.config.get<MetaConfig>('meta');
+    return this.metaSettings.getSettings();
   }
 
   get fallbackToken(): string {

@@ -1,18 +1,5 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Param,
-  Post,
-  Put,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   AssignProductsDto,
   ConnectCatalogDto,
@@ -28,15 +15,12 @@ import { CategoryService } from './services/category.service';
 import { CollectionService } from './services/collection.service';
 import { SyncService } from './services/sync.service';
 
-type AdminUser = { email: string };
-
 /**
  * Catalog, category, collection and sync endpoints.
  *
  * Products get their own controller because they carry file uploads; the rest
  * of the catalog surface lives here.
  */
-@UseGuards(JwtAuthGuard)
 @Controller('api/catalog')
 export class CatalogController {
   constructor(
@@ -92,12 +76,11 @@ export class CatalogController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Post('sync')
-  runSync(@Body() dto: SyncCatalogDto, @CurrentUser() user: AdminUser) {
+  runSync(@Body() dto: SyncCatalogDto) {
     return this.sync.run({
       catalogId: dto.catalogId,
       push: dto.push,
       trigger: 'manual',
-      triggeredBy: user?.email,
     });
   }
 
@@ -116,9 +99,8 @@ export class CatalogController {
   resolveConflict(
     @Param('productId') productId: string,
     @Body('resolution') resolution: 'local' | 'meta',
-    @CurrentUser() user: AdminUser,
   ) {
-    return this.sync.resolveConflict(productId, resolution === 'meta' ? 'meta' : 'local', user?.email);
+    return this.sync.resolveConflict(productId, resolution === 'meta' ? 'meta' : 'local');
   }
 
   // =======================================================================
@@ -131,42 +113,30 @@ export class CatalogController {
   }
 
   @Post('categories')
-  createCategory(@Body() dto: CreateCategoryDto, @CurrentUser() user: AdminUser) {
-    return this.categories.create(dto, user?.email);
+  createCategory(@Body() dto: CreateCategoryDto) {
+    return this.categories.create(dto);
   }
 
   @Put('categories/:id')
-  updateCategory(
-    @Param('id') id: string,
-    @Body() dto: UpdateCategoryDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.categories.update(id, dto, user?.email);
+  updateCategory(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
+    return this.categories.update(id, dto);
   }
 
   @Delete('categories/:id')
-  deleteCategory(@Param('id') id: string, @CurrentUser() user: AdminUser) {
-    return this.categories.remove(id, user?.email);
+  deleteCategory(@Param('id') id: string) {
+    return this.categories.remove(id);
   }
 
   @HttpCode(200)
   @Post('categories/:id/products')
-  assignToCategory(
-    @Param('id') id: string,
-    @Body() dto: AssignProductsDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.categories.assignProducts(id, dto.productIds, user?.email);
+  assignToCategory(@Param('id') id: string, @Body() dto: AssignProductsDto) {
+    return this.categories.assignProducts(id, dto.productIds);
   }
 
   @HttpCode(200)
   @Post('categories/:id/products/remove')
-  removeFromCategory(
-    @Param('id') id: string,
-    @Body() dto: AssignProductsDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.categories.removeProducts(id, dto.productIds, user?.email);
+  removeFromCategory(@Param('id') id: string, @Body() dto: AssignProductsDto) {
+    return this.categories.removeProducts(id, dto.productIds);
   }
 
   // =======================================================================
@@ -184,47 +154,35 @@ export class CatalogController {
   }
 
   @Post('collections')
-  createCollection(@Body() dto: CreateCollectionDto, @CurrentUser() user: AdminUser) {
-    return this.collections.create(dto, user?.email);
+  createCollection(@Body() dto: CreateCollectionDto) {
+    return this.collections.create(dto);
   }
 
   @Put('collections/:id')
-  updateCollection(
-    @Param('id') id: string,
-    @Body() dto: UpdateCollectionDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.collections.update(id, dto, user?.email);
+  updateCollection(@Param('id') id: string, @Body() dto: UpdateCollectionDto) {
+    return this.collections.update(id, dto);
   }
 
   @Delete('collections/:id')
-  deleteCollection(@Param('id') id: string, @CurrentUser() user: AdminUser) {
-    return this.collections.remove(id, user?.email);
+  deleteCollection(@Param('id') id: string) {
+    return this.collections.remove(id);
   }
 
   @HttpCode(200)
   @Post('collections/:id/publish')
-  publishCollection(@Param('id') id: string, @CurrentUser() user: AdminUser) {
-    return this.collections.publish(id, user?.email);
+  publishCollection(@Param('id') id: string) {
+    return this.collections.publish(id);
   }
 
   @HttpCode(200)
   @Post('collections/:id/products')
-  addToCollection(
-    @Param('id') id: string,
-    @Body() dto: AssignProductsDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.collections.addProducts(id, dto.productIds, user?.email);
+  addToCollection(@Param('id') id: string, @Body() dto: AssignProductsDto) {
+    return this.collections.addProducts(id, dto.productIds);
   }
 
   @HttpCode(200)
   @Post('collections/:id/products/remove')
-  removeFromCollection(
-    @Param('id') id: string,
-    @Body() dto: AssignProductsDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.collections.removeProducts(id, dto.productIds, user?.email);
+  removeFromCollection(@Param('id') id: string, @Body() dto: AssignProductsDto) {
+    return this.collections.removeProducts(id, dto.productIds);
   }
 }

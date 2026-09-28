@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/http-exception.filter';
+import { MetaSettingsService } from './config/meta-settings.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -44,7 +45,7 @@ async function bootstrap() {
   const port = config.get<number>('port');
   await app.listen(port, '0.0.0.0');
 
-  const meta = config.get('meta') as { accessToken: string; verifyToken: string };
+  const meta = app.get(MetaSettingsService).getSettings();
   logger.log(`Server listening on http://localhost:${port}`);
   logger.log(`Webhook URL path: /api/whatsapp/webhook`);
   if (!meta.accessToken) {
@@ -52,12 +53,6 @@ async function bootstrap() {
   }
   if (!meta.verifyToken) {
     logger.warn('META_WHATSAPP_VERIFY_TOKEN is empty - webhook verification will fail');
-  }
-  if (!config.get<boolean>('authEnabled')) {
-    logger.warn(
-      'AUTH_ENABLED=false - the inbox and send endpoints are OPEN. Anyone who can reach ' +
-        `port ${port} can read conversations and send WhatsApp messages. Do not expose this publicly.`,
-    );
   }
 }
 

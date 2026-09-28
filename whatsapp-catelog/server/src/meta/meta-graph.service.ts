@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, Method } from 'axios';
 import * as crypto from 'crypto';
 import FormData from 'form-data';
 import { MetaConfig } from '../config/configuration';
+import { MetaSettingsService } from '../config/meta-settings.service';
 import { normalizeMetaError, toHttpException } from './meta-error';
 
 export interface GraphRequest {
@@ -37,12 +37,12 @@ export class MetaGraphService {
   private readonly logger = new Logger('Meta Graph');
   private readonly http: AxiosInstance;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(private readonly metaSettings: MetaSettingsService) {
     this.http = axios.create({ timeout: 30_000 });
   }
 
   get meta(): MetaConfig {
-    return this.config.get<MetaConfig>('meta');
+    return this.metaSettings.getSettings();
   }
 
   get apiVersion(): string {

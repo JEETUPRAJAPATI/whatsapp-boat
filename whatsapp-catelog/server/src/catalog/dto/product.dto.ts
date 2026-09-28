@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -15,6 +16,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export const AVAILABILITY = [
@@ -124,6 +126,106 @@ export class CreateProductDto {
   @IsObject()
   customFields?: Record<string, unknown>;
 
+  // ---------------------------------------------------------------------
+  // Real-estate listing attributes. Optional, typed pass-throughs so a
+  // caller like a property management system can hand these over by name
+  // instead of assembling an opaque `customFields` blob itself. Stored in
+  // `customFields` locally (Meta's generic commerce product API has no
+  // real-estate vertical fields to send these to).
+  // ---------------------------------------------------------------------
+
+  @IsOptional()
+  @IsString()
+  propertyType?: string;
+
+  @IsOptional()
+  @IsString()
+  transactionType?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  bedrooms?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  bathrooms?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  balconies?: number;
+
+  @IsOptional()
+  @IsString()
+  furnishingStatus?: string;
+
+  @IsOptional()
+  @IsString()
+  possessionStatus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  carpetArea?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  builtUpArea?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  areaSize?: number;
+
+  @IsOptional()
+  @IsString()
+  locality?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  state?: string;
+
+  @IsOptional()
+  @IsString()
+  society?: string;
+
+  @IsOptional()
+  @IsString()
+  builderName?: string;
+
+  /**
+   * All product images, already hosted somewhere public. Preferred over the
+   * single `imageUrl` when there is more than one photo - each becomes its
+   * own ProductMedia row, and the first is used as the primary image.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUrl({ protocols: ['http', 'https'] }, { each: true, message: 'Each image URL must be a valid public URL' })
+  imageUrls?: string[];
+
+  /**
+   * A property walkthrough/tour video, already hosted somewhere public.
+   * Stored and returned by this API, but Meta's commerce catalog product API
+   * has no video field, so it will not appear inside the WhatsApp catalog
+   * listing itself.
+   */
+  // Empty string is a deliberate "clear the video" signal (applyUrlMedia
+  // treats a falsy videoUrl as delete-only), so it skips @IsUrl rather than
+  // failing validation - only a non-empty value has to look like a URL.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== '')
+  @IsUrl({ protocols: ['http', 'https'] }, { message: 'Video URL must be a valid public URL' })
+  @MaxLength(2000)
+  videoUrl?: string;
+
   /** False publishes to Meta; true keeps the product local. */
   @IsOptional()
   @Transform(toBool)
@@ -204,6 +306,84 @@ export class UpdateProductDto {
   @IsOptional()
   @IsObject()
   customFields?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  propertyType?: string;
+
+  @IsOptional()
+  @IsString()
+  transactionType?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  bedrooms?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  bathrooms?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  balconies?: number;
+
+  @IsOptional()
+  @IsString()
+  furnishingStatus?: string;
+
+  @IsOptional()
+  @IsString()
+  possessionStatus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  carpetArea?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  builtUpArea?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  areaSize?: number;
+
+  @IsOptional()
+  @IsString()
+  locality?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  state?: string;
+
+  @IsOptional()
+  @IsString()
+  society?: string;
+
+  @IsOptional()
+  @IsString()
+  builderName?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUrl({ protocols: ['http', 'https'] }, { each: true, message: 'Each image URL must be a valid public URL' })
+  imageUrls?: string[];
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== '')
+  @IsUrl({ protocols: ['http', 'https'] }, { message: 'Video URL must be a valid public URL' })
+  @MaxLength(2000)
+  videoUrl?: string;
 
   @IsOptional()
   @Transform(toBool)

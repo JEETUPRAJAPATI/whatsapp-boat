@@ -3,12 +3,8 @@ export interface AppConfig {
   port: number;
   nodeEnv: string;
   clientOrigin: string[];
-  authEnabled: boolean;
-  jwtSecret: string;
-  jwtExpiresIn: string;
-  adminEmail: string;
-  adminPassword: string;
   webhookLogging: boolean;
+  encryptionKey: string;
   meta: {
     accessToken: string;
     phoneNumberId: string;
@@ -26,14 +22,8 @@ export default (): AppConfig => ({
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),
-  // Opt-out, not opt-in: a fresh deployment is protected unless someone
-  // deliberately writes AUTH_ENABLED=false.
-  authEnabled: String(process.env.AUTH_ENABLED || 'true') !== 'false',
-  jwtSecret: process.env.JWT_SECRET || '',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '12h',
-  adminEmail: process.env.ADMIN_EMAIL || '',
-  adminPassword: process.env.ADMIN_PASSWORD || '',
   webhookLogging: String(process.env.WEBHOOK_LOGGING || 'false') === 'true',
+  encryptionKey: process.env.ENCRYPTION_KEY || '',
   meta: {
     accessToken: process.env.META_WHATSAPP_ACCESS_TOKEN || '',
     phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID || '',

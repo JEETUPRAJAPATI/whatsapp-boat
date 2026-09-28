@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { MetaConfig } from '../config/configuration';
+import { MetaSettingsService } from '../config/meta-settings.service';
 import { MetaGraphService } from './meta-graph.service';
 
 export interface MetaSendResult {
@@ -27,11 +27,11 @@ export class MetaMessagingService {
 
   constructor(
     private readonly graph: MetaGraphService,
-    private readonly config: ConfigService,
+    private readonly metaSettings: MetaSettingsService,
   ) {}
 
   private get meta(): MetaConfig {
-    return this.config.get<MetaConfig>('meta');
+    return this.metaSettings.getSettings();
   }
 
   /** Strips formatting so Meta receives a bare MSISDN (digits only). */

@@ -11,15 +11,12 @@ import {
   Query,
   Res,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { ConversationStatus } from '@prisma/client';
 import { Response } from 'express';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   ListConversationsDto,
   ListMessagesDto,
@@ -32,10 +29,9 @@ import { MessagingService } from './services/messaging.service';
 import { WhatsappService } from './services/whatsapp.service';
 
 /**
- * Admin inbox API. Every route here requires a valid admin JWT - an
- * unauthenticated caller can never send a WhatsApp message.
+ * Admin inbox API. No authentication gate - anyone who can reach this
+ * server can read conversations and send WhatsApp messages.
  */
-@UseGuards(JwtAuthGuard)
 @Controller('api/whatsapp')
 export class WhatsappController {
   constructor(
@@ -92,11 +88,10 @@ export class WhatsappController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-message')
-  sendMessage(@Body() dto: SendMessageDto, @CurrentUser() user: { email: string }) {
+  sendMessage(@Body() dto: SendMessageDto) {
     return this.messaging.sendText({
       to: dto.to,
       message: dto.message,
-      sentBy: user.email,
     });
   }
 
@@ -104,13 +99,12 @@ export class WhatsappController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-template')
-  sendTemplate(@Body() dto: SendTemplateDto, @CurrentUser() user: { email: string }) {
+  sendTemplate(@Body() dto: SendTemplateDto) {
     return this.messaging.sendTemplate({
       to: dto.to,
       templateName: dto.template_name,
       language: dto.language,
       components: dto.components,
-      sentBy: user.email,
     });
   }
 
@@ -127,17 +121,12 @@ export class WhatsappController {
       limits: { fileSize: 100 * 1024 * 1024, files: 1 },
     }),
   )
-  sendMedia(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dto: SendMediaDto,
-    @CurrentUser() user: { email: string },
-  ) {
+  sendMedia(@UploadedFile() file: Express.Multer.File, @Body() dto: SendMediaDto) {
     if (!file) throw new BadRequestException('A file is required');
     return this.messaging.sendMedia({
       to: dto.to,
       file,
       caption: dto.caption,
-      sentBy: user.email,
     });
   }
 

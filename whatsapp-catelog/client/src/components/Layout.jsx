@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { initials } from '../lib/format';
 import { useApp } from '../store/AppContext';
 import {
   IconBolt,
@@ -9,7 +8,7 @@ import {
   IconDashboard,
   IconInbox,
   IconLayers,
-  IconLogout,
+  IconLock,
   IconMenu,
   IconMoon,
   IconPlug,
@@ -49,6 +48,7 @@ const NAV = [
     items: [
       { to: '/automation', label: 'Automation', icon: IconBolt },
       { to: '/audit', label: 'Audit log', icon: IconShield },
+      { to: '/settings/meta', label: 'Meta credentials', icon: IconLock },
     ],
   },
 ];
@@ -108,56 +108,18 @@ function ConnectionPill({ status }) {
   );
 }
 
-function UserMenu() {
-  const { user, signOut, theme, toggleTheme } = useApp();
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onClick = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
-    };
-    const onKey = (event) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+/** Theme toggle - the only thing that used to live in the account menu. */
+function ThemeToggle() {
+  const { theme, toggleTheme } = useApp();
 
   return (
-    <div className="usermenu" ref={ref}>
-      <button
-        className="avatar"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Account menu"
-      >
-        {initials(user?.name || user?.email, 'A')}
-      </button>
-
-      {open && (
-        <div className="usermenu-panel" role="menu">
-          <div className="usermenu-head">
-            <div className="strong small truncate">{user?.name || 'Administrator'}</div>
-            <div className="tiny muted truncate">{user?.email}</div>
-          </div>
-          <button className="usermenu-item" onClick={toggleTheme} role="menuitem">
-            {theme === 'dark' ? <IconSun size={16} /> : <IconMoon size={16} />}
-            {theme === 'dark' ? 'Light theme' : 'Dark theme'}
-          </button>
-          <button className="usermenu-item" onClick={signOut} role="menuitem">
-            <IconLogout size={16} />
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
+    <button
+      className="btn btn-ghost btn-sm btn-icon"
+      onClick={toggleTheme}
+      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+    >
+      {theme === 'dark' ? <IconSun size={16} /> : <IconMoon size={16} />}
+    </button>
   );
 }
 
@@ -228,7 +190,7 @@ export default function Layout() {
             <div className="topbar-title truncate">{title.label}</div>
             {title.section && <div className="topbar-sub">{title.section}</div>}
           </div>
-          <UserMenu />
+          <ThemeToggle />
         </header>
 
         <Outlet />

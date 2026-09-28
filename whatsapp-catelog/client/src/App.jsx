@@ -12,7 +12,7 @@ import ProductForm from './pages/catalog/ProductForm';
 import Products from './pages/catalog/Products';
 import Sync from './pages/catalog/Sync';
 import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
+import MetaCredentials from './pages/MetaCredentials';
 import Inbox from './pages/whatsapp/Inbox';
 import Settings from './pages/whatsapp/Settings';
 import Setup from './pages/whatsapp/Setup';
@@ -31,24 +31,13 @@ function NotFound() {
 }
 
 export default function App() {
-  const { booting, user, authRequired } = useApp();
+  const { booting } = useApp();
 
   if (booting) {
     return (
       <div className="boot-screen">
         <span className="spinner spinner-lg" />
       </div>
-    );
-  }
-
-  // With AUTH_ENABLED=false the server runs every request as a local admin, so
-  // the sign-in screen would be theatre - skip it.
-  if (authRequired && !user) {
-    return (
-      <>
-        <Login />
-        <Toasts />
-      </>
     );
   }
 
@@ -77,6 +66,7 @@ export default function App() {
 
           <Route path="automation" element={<Automation />} />
           <Route path="audit" element={<Audit />} />
+          <Route path="settings/meta" element={<MetaCredentials />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

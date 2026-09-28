@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MetaConfig } from '../../config/configuration';
+import { MetaSettingsService } from '../../config/meta-settings.service';
 import { CryptoService } from '../../common/crypto.service';
 import { MetaBusinessService } from '../../meta/meta-business.service';
 import { MetaGraphService } from '../../meta/meta-graph.service';
@@ -34,10 +35,11 @@ export class EmbeddedSignupService {
     private readonly accounts: AccountService,
     private readonly crypto: CryptoService,
     private readonly config: ConfigService,
+    private readonly metaSettings: MetaSettingsService,
   ) {}
 
   private get meta(): MetaConfig {
-    return this.config.get<MetaConfig>('meta');
+    return this.metaSettings.getSettings();
   }
 
   /**

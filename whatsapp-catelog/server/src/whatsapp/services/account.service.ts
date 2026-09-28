@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleIni
 import { ConfigService } from '@nestjs/config';
 import { ConnectionStatus, Prisma } from '@prisma/client';
 import { MetaConfig } from '../../config/configuration';
+import { MetaSettingsService } from '../../config/meta-settings.service';
 import { MetaBusinessService, MetaPhoneNumber, MetaWaba } from '../../meta/meta-business.service';
 import { MetaCatalogService } from '../../meta/meta-catalog.service';
 import { MetaTokenService } from '../../meta/meta-token.service';
@@ -30,10 +31,11 @@ export class AccountService implements OnModuleInit {
     private readonly business: MetaBusinessService,
     private readonly catalogApi: MetaCatalogService,
     private readonly config: ConfigService,
+    private readonly metaSettings: MetaSettingsService,
   ) {}
 
   private get meta(): MetaConfig {
-    return this.config.get<MetaConfig>('meta');
+    return this.metaSettings.getSettings();
   }
 
   // -----------------------------------------------------------------------
@@ -50,7 +52,11 @@ export class AccountService implements OnModuleInit {
    * already onboarded.
    */
   async onModuleInit() {
-    const { wabaId, accessToken } = this.meta;
+    // wabaId is a one-time bootstrap convenience (import the account already
+    // described in .env on first boot) and was never moved into the DB-backed
+    // settings table - it still comes straight from the environment.
+    const wabaId = this.config.get<MetaConfig>('meta').wabaId;
+    const { accessToken } = this.meta;
     if (!wabaId || !accessToken) return;
 
     try {

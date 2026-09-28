@@ -12,7 +12,6 @@ import {
   Query,
   Res,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -20,8 +19,6 @@ import { Throttle } from '@nestjs/throttler';
 import { ConversationStatus } from '@prisma/client';
 import { Response } from 'express';
 import { AuditService } from '../audit/audit.service';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MetaMessagingService } from '../meta/meta-messaging.service';
 import { MetaTokenService } from '../meta/meta-token.service';
 import {
@@ -48,16 +45,12 @@ import { ConversationService } from './services/conversation.service';
 import { EmbeddedSignupService } from './services/embedded-signup.service';
 import { MessagingService } from './services/messaging.service';
 
-type AdminUser = { email: string };
-
 /**
  * Admin WhatsApp API.
  *
- * Every route requires a valid admin JWT: an unauthenticated caller can never
- * read a conversation, change a connection, or send a message. The Meta access
- * token is never a parameter here and never appears in a response.
+ * The Meta access token is never a parameter here and never appears in a
+ * response.
  */
-@UseGuards(JwtAuthGuard)
 @Controller('api/whatsapp')
 export class WhatsappController {
   constructor(
@@ -97,10 +90,9 @@ export class WhatsappController {
 
   @HttpCode(200)
   @Post('accounts/:id/refresh')
-  async refresh(@Param('id') id: string, @CurrentUser() user: AdminUser) {
+  async refresh(@Param('id') id: string) {
     const account = await this.accounts.refresh(id);
     await this.audit.log({
-      userEmail: user?.email,
       action: 'whatsapp.refreshed',
       entity: 'whatsapp_account',
       entityId: id,
@@ -109,10 +101,9 @@ export class WhatsappController {
   }
 
   @Delete('accounts/:id')
-  async disconnect(@Param('id') id: string, @CurrentUser() user: AdminUser) {
+  async disconnect(@Param('id') id: string) {
     const result = await this.accounts.disconnect(id);
     await this.audit.log({
-      userEmail: user?.email,
       action: 'whatsapp.disconnected',
       entity: 'whatsapp_account',
       entityId: id,
@@ -137,7 +128,7 @@ export class WhatsappController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Post('embedded-signup')
-  async embeddedSignup(@Body() dto: EmbeddedSignupDto, @CurrentUser() user: AdminUser) {
+  async embeddedSignup(@Body() dto: EmbeddedSignupDto) {
     try {
       const result = await this.signup.complete({
         code: dto.code,
@@ -146,7 +137,6 @@ export class WhatsappController {
         businessId: dto.business_id,
       });
       await this.audit.log({
-        userEmail: user?.email,
         action: 'whatsapp.connected',
         entity: 'whatsapp_account',
         entityId: result.account.id,
@@ -155,7 +145,7 @@ export class WhatsappController {
       return result;
     } catch (err) {
       await this.audit.logFailure(
-        { userEmail: user?.email, action: 'whatsapp.connect_failed', entity: 'whatsapp_account' },
+        { action: 'whatsapp.connect_failed', entity: 'whatsapp_account' },
         err,
       );
       throw err;
@@ -181,11 +171,10 @@ export class WhatsappController {
 
   @HttpCode(200)
   @Post('connect')
-  async connect(@Body() dto: ConnectAccountDto, @CurrentUser() user: AdminUser) {
+  async connect(@Body() dto: ConnectAccountDto) {
     try {
       const account = await this.accounts.connectManually(dto);
       await this.audit.log({
-        userEmail: user?.email,
         action: 'whatsapp.connected',
         entity: 'whatsapp_account',
         entityId: account.id,
@@ -194,7 +183,7 @@ export class WhatsappController {
       return account;
     } catch (err) {
       await this.audit.logFailure(
-        { userEmail: user?.email, action: 'whatsapp.connect_failed', entity: 'whatsapp_account' },
+        { action: 'whatsapp.connect_failed', entity: 'whatsapp_account' },
         err,
       );
       throw err;
@@ -222,18 +211,13 @@ export class WhatsappController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Post('accounts/:id/register-number')
-  async registerNumber(
-    @Param('id') id: string,
-    @Body() dto: RegisterNumberDto,
-    @CurrentUser() user: AdminUser,
-  ) {
+  async registerNumber(@Param('id') id: string, @Body() dto: RegisterNumberDto) {
     const result = await this.signup.registerNumber({
       accountId: id,
       phoneNumberId: dto.phoneNumberId,
       pin: dto.pin,
     });
     await this.audit.log({
-      userEmail: user?.email,
       action: 'whatsapp.number_registered',
       entity: 'whatsapp_phone_number',
       entityId: dto.phoneNumberId,
@@ -305,11 +289,10 @@ export class WhatsappController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-message')
-  sendMessage(@Body() dto: SendMessageDto, @CurrentUser() user: AdminUser) {
+  sendMessage(@Body() dto: SendMessageDto) {
     return this.messaging.sendText({
       to: dto.to,
       message: dto.message,
-      sentBy: user?.email,
       accountId: dto.accountId,
       phoneNumberId: dto.phoneNumberId,
     });
@@ -318,13 +301,12 @@ export class WhatsappController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-template')
-  sendTemplate(@Body() dto: SendTemplateDto, @CurrentUser() user: AdminUser) {
+  sendTemplate(@Body() dto: SendTemplateDto) {
     return this.messaging.sendTemplate({
       to: dto.to,
       templateName: dto.template_name,
       language: dto.language,
       components: dto.components,
-      sentBy: user?.email,
       accountId: dto.accountId,
       phoneNumberId: dto.phoneNumberId,
     });
@@ -339,17 +321,12 @@ export class WhatsappController {
       limits: { fileSize: 100 * 1024 * 1024, files: 1 },
     }),
   )
-  sendMedia(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dto: SendMediaDto,
-    @CurrentUser() user: AdminUser,
-  ) {
+  sendMedia(@UploadedFile() file: Express.Multer.File, @Body() dto: SendMediaDto) {
     if (!file) throw new BadRequestException('A file is required.');
     return this.messaging.sendMedia({
       to: dto.to,
       file,
       caption: dto.caption,
-      sentBy: user?.email,
       accountId: dto.accountId,
       phoneNumberId: dto.phoneNumberId,
     });
@@ -359,7 +336,7 @@ export class WhatsappController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-product')
-  async sendProduct(@Body() dto: SendProductDto, @CurrentUser() user: AdminUser) {
+  async sendProduct(@Body() dto: SendProductDto) {
     const message = await this.messaging.sendProduct({
       to: dto.to,
       productId: dto.productId,
@@ -368,12 +345,10 @@ export class WhatsappController {
       body: dto.body,
       footer: dto.footer,
       includeMedia: dto.includeMedia,
-      sentBy: user?.email,
       accountId: dto.accountId,
       phoneNumberId: dto.phoneNumberId,
     });
     await this.audit.log({
-      userEmail: user?.email,
       action: 'whatsapp.product_sent',
       entity: 'product',
       entityId: dto.productId || dto.product_retailer_id,
@@ -385,7 +360,7 @@ export class WhatsappController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-product-list')
-  async sendProductList(@Body() dto: SendProductListDto, @CurrentUser() user: AdminUser) {
+  async sendProductList(@Body() dto: SendProductListDto) {
     const message = await this.messaging.sendProductList({
       to: dto.to,
       catalogId: dto.catalogId,
@@ -397,12 +372,10 @@ export class WhatsappController {
         title: s.title,
         productRetailerIds: s.product_retailer_ids,
       })),
-      sentBy: user?.email,
       accountId: dto.accountId,
       phoneNumberId: dto.phoneNumberId,
     });
     await this.audit.log({
-      userEmail: user?.email,
       action: 'whatsapp.product_list_sent',
       entity: 'collection',
       entityId: dto.collectionId || null,
@@ -414,19 +387,17 @@ export class WhatsappController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   @Post('send-catalog')
-  async sendCatalog(@Body() dto: SendCatalogDto, @CurrentUser() user: AdminUser) {
+  async sendCatalog(@Body() dto: SendCatalogDto) {
     const message = await this.messaging.sendCatalog({
       to: dto.to,
       catalogId: dto.catalogId,
       body: dto.body,
       footer: dto.footer,
       thumbnailProductRetailerId: dto.thumbnail_product_retailer_id,
-      sentBy: user?.email,
       accountId: dto.accountId,
       phoneNumberId: dto.phoneNumberId,
     });
     await this.audit.log({
-      userEmail: user?.email,
       action: 'whatsapp.catalog_sent',
       entity: 'catalog',
       entityId: dto.catalogId || null,

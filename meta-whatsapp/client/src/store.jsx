@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import { io } from 'socket.io-client';
-import { api, tokenStore } from './lib/api';
+import { api } from './lib/api';
 
 const WaContext = createContext(null);
 export const useWa = () => useContext(WaContext);
@@ -16,8 +16,6 @@ export const useWa = () => useContext(WaContext);
 const emptyThread = { items: [], hasMore: false, loading: false };
 
 export function WaProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [booting, setBooting] = useState(true);
   const [metaStatus, setMetaStatus] = useState({ configured: false });
 
   const [conversations, setConversations] = useState([]);
@@ -46,54 +44,6 @@ export function WaProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------
-  // Session
-  // -------------------------------------------------------------------
-
-  const [authRequired, setAuthRequired] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // The server decides whether a sign-in screen is needed at all.
-        const cfg = await api.authConfig();
-        if (cancelled) return;
-        setAuthRequired(cfg.authRequired);
-
-        if (!cfg.authRequired) {
-          setUser(await api.me());
-          return;
-        }
-        if (!tokenStore.get()) return;
-        setUser(await api.me());
-      } catch {
-        tokenStore.clear();
-      } finally {
-        if (!cancelled) setBooting(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const login = useCallback(async (email, password) => {
-    const res = await api.login(email, password);
-    tokenStore.set(res.accessToken);
-    setUser(res.user);
-    return res.user;
-  }, []);
-
-  const logout = useCallback(() => {
-    tokenStore.clear();
-    if (socketRef.current) socketRef.current.disconnect();
-    setUser(null);
-    setConversations([]);
-    setThreads({});
-    setActiveId(null);
-  }, []);
-
-  // -------------------------------------------------------------------
   // Data loading
   // -------------------------------------------------------------------
 
@@ -113,17 +63,15 @@ export function WaProvider({ children }) {
   );
 
   useEffect(() => {
-    if (!user) return;
     loadConversations();
     api.status().then(setMetaStatus).catch(() => {});
-  }, [user, loadConversations]);
+  }, [loadConversations]);
 
   /** Server-side search, debounced so typing does not hammer the API. */
   useEffect(() => {
-    if (!user) return undefined;
     const id = setTimeout(() => loadConversations(search), 250);
     return () => clearTimeout(id);
-  }, [search, user, loadConversations]);
+  }, [search, loadConversations]);
 
   const loadMessages = useCallback(
     async (conversationId, { older = false } = {}) => {
@@ -212,11 +160,8 @@ export function WaProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!user) return undefined;
-
     const socket = io('/', {
       path: '/socket.io',
-      auth: { token: tokenStore.get() },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -238,11 +183,6 @@ export function WaProvider({ children }) {
       }
     });
     socket.on('disconnect', () => setSocketLive(false));
-    socket.on('unauthorized', () => {
-      setSocketLive(false);
-      notify('Session expired, please sign in again', 'error');
-      logout();
-    });
 
     socket.on('whatsapp:new-message', ({ conversationId, message }) => {
       appendMessage(conversationId, message);
@@ -276,7 +216,7 @@ export function WaProvider({ children }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [user, appendMessage, upsertConversation, logout, notify]);
+  }, [appendMessage, upsertConversation]);
 
   /**
    * Fallbacks for the cases a socket alone cannot cover: the connection is
@@ -284,8 +224,6 @@ export function WaProvider({ children }) {
    * its timers. Both re-sync from the database, which is the source of truth.
    */
   useEffect(() => {
-    if (!user) return undefined;
-
     const resync = () => {
       loadConversationsRef.current(searchRef.current);
       if (activeIdRef.current) loadMessagesRef.current(activeIdRef.current);
@@ -303,7 +241,7 @@ export function WaProvider({ children }) {
       document.removeEventListener('visibilitychange', onVisible);
       if (timer) clearInterval(timer);
     };
-  }, [user, socketLive]);
+  }, [socketLive]);
 
   // -------------------------------------------------------------------
   // Actions
@@ -389,11 +327,6 @@ export function WaProvider({ children }) {
   );
 
   const value = {
-    user,
-    booting,
-    authRequired,
-    login,
-    logout,
     metaStatus,
     conversations,
     loadingConversations,

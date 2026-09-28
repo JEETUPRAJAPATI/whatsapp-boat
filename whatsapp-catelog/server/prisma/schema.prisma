@@ -1,6 +1,6 @@
 // WhatsApp Business Catalog Management System - PostgreSQL (Supabase) schema.
 //
-// The inbox models (Customer, Conversation, Message, AdminUser, WebhookLog)
+// The inbox models (Customer, Conversation, Message, WebhookLog)
 // are carried over byte-identical from the meta-whatsapp inbox: both apps point
 // at the same database, so this schema must describe those tables exactly as
 // they already exist. Everything after the "Catalog management" banner is new
@@ -99,17 +99,6 @@ model Message {
 
   @@index([conversationId, timestamp])
   @@map("messages")
-}
-
-model AdminUser {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String?
-  passwordHash String   @map("password_hash")
-  role         String   @default("admin")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  @@map("admin_users")
 }
 
 model WebhookLog {
@@ -234,6 +223,26 @@ model MetaCredential {
   account WhatsappAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
 
   @@map("meta_credentials")
+}
+
+/// App-level Meta/WhatsApp credentials, editable from the admin UI instead of
+/// living only in .env. Singleton row (id is always "singleton"). Secrets are
+/// AES-256-GCM encrypted the same way MetaCredential.accessTokenEnc is.
+model MetaAppSettings {
+  id             String   @id @default("singleton")
+  appId          String   @default("") @map("app_id")
+  appSecretEnc   String?  @map("app_secret_enc")
+  configId       String   @default("") @map("config_id")
+  apiVersion     String   @default("v25.0") @map("api_version")
+  graphBaseUrl   String   @default("https://graph.facebook.com") @map("graph_base_url")
+  verifyToken    String   @default("") @map("verify_token")
+  accessTokenEnc String?  @map("access_token_enc")
+  businessId     String   @default("") @map("business_id")
+  catalogId      String   @default("") @map("catalog_id")
+  businessName   String   @default("My Business") @map("business_name")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("meta_catalog_settings")
 }
 
 /// A phone number registered on a WABA.

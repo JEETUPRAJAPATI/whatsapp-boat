@@ -95,15 +95,20 @@ model Message {
   @@map("messages")
 }
 
-model AdminUser {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String?
-  passwordHash String   @map("password_hash")
-  role         String   @default("admin")
-  createdAt    DateTime @default(now()) @map("created_at")
+// Singleton row (id is always "singleton") holding the Meta WhatsApp Cloud
+// API credentials that used to live only in .env. accessTokenEnc/appSecretEnc
+// are AES-256-GCM ciphertext produced by CryptoService, never plaintext.
+model MetaWhatsappSettings {
+  id                String   @id @default("singleton")
+  accessTokenEnc    String?  @map("access_token_enc")
+  phoneNumberId     String   @default("") @map("phone_number_id")
+  businessAccountId String   @default("") @map("business_account_id")
+  apiVersion        String   @default("v25.0") @map("api_version")
+  verifyToken       String   @default("") @map("verify_token")
+  appSecretEnc      String?  @map("app_secret_enc")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  @@map("admin_users")
+  @@map("meta_whatsapp_settings")
 }
 
 model WebhookLog {

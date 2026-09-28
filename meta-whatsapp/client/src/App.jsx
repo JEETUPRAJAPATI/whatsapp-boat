@@ -1,5 +1,4 @@
 import ChatWindow from './components/ChatWindow';
-import Login from './components/Login';
 import Sidebar from './components/Sidebar';
 import { IconChats } from './components/Icons';
 import { useWa } from './store';
@@ -23,17 +22,7 @@ function EmptyState() {
 }
 
 export default function App() {
-  const { user, booting, activeConversation, toast, socketLive, metaStatus } = useWa();
-
-  if (booting) {
-    return (
-      <div className="boot-screen">
-        <div className="spinner" />
-      </div>
-    );
-  }
-
-  if (!user) return <Login />;
+  const { activeConversation, toast, socketLive, metaStatus } = useWa();
 
   return (
     /* Banners sit in normal flow above the grid - a fixed overlay would cover

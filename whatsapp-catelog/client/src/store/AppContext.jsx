@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, setUnauthorizedHandler, tokenStore } from '../lib/api';
+import { api } from '../lib/api';
 
 const AppContext = createContext(null);
 
@@ -15,8 +15,6 @@ let toastSeq = 0;
  */
 export function AppProvider({ children }) {
   const [booting, setBooting] = useState(true);
-  const [authRequired, setAuthRequired] = useState(true);
-  const [user, setUser] = useState(null);
   const [status, setStatus] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [theme, setTheme] = useState(() => {
@@ -89,21 +87,6 @@ export function AppProvider({ children }) {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
   }, []);
 
-  // ------------------------------------------------------------------ auth
-
-  const signOut = useCallback(() => {
-    tokenStore.clear();
-    setUser(null);
-    setStatus(null);
-  }, []);
-
-  useEffect(() => {
-    setUnauthorizedHandler(() => {
-      tokenStore.clear();
-      setUser(null);
-    });
-  }, []);
-
   const refreshStatus = useCallback(async () => {
     try {
       const next = await api.status();
@@ -115,40 +98,13 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  const signIn = useCallback(
-    async (email, password) => {
-      const result = await api.login(email, password);
-      tokenStore.set(result.accessToken);
-      setUser(result.user);
-      await refreshStatus();
-      return result.user;
-    },
-    [refreshStatus],
-  );
-
-  /** Boot: is auth on, are we already signed in, what is connected. */
+  /** Boot: load whatever the shell needs before the first paint. */
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const config = await api.authConfig();
-        if (cancelled) return;
-        setAuthRequired(config.authRequired);
-
-        if (!config.authRequired || tokenStore.get()) {
-          try {
-            const me = await api.me();
-            if (cancelled) return;
-            setUser(me);
-            await refreshStatus();
-          } catch {
-            tokenStore.clear();
-          }
-        }
-      } catch {
-        // Server unreachable: fall through to the sign-in screen, which shows
-        // the connection error the moment a login is attempted.
+        await refreshStatus();
       } finally {
         if (!cancelled) setBooting(false);
       }
@@ -162,34 +118,16 @@ export function AppProvider({ children }) {
   const value = useMemo(
     () => ({
       booting,
-      authRequired,
-      user,
       status,
       theme,
       toasts,
-      signIn,
-      signOut,
       toggleTheme,
       refreshStatus,
       toast,
       toastError,
       dismissToast,
     }),
-    [
-      booting,
-      authRequired,
-      user,
-      status,
-      theme,
-      toasts,
-      signIn,
-      signOut,
-      toggleTheme,
-      refreshStatus,
-      toast,
-      toastError,
-      dismissToast,
-    ],
+    [booting, status, theme, toasts, toggleTheme, refreshStatus, toast, toastError, dismissToast],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

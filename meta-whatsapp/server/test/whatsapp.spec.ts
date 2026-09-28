@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageStatus } from '@prisma/client';
+import { MetaSettingsService } from '../src/config/meta-settings.service';
 import { ConversationService } from '../src/whatsapp/services/conversation.service';
 import { WebhookService } from '../src/whatsapp/services/webhook.service';
 import { WhatsappService } from '../src/whatsapp/services/whatsapp.service';
@@ -18,6 +19,12 @@ const META_CONFIG = {
 function configFor(overrides: Record<string, unknown> = {}): ConfigService {
   const values: Record<string, unknown> = { meta: META_CONFIG, webhookLogging: false, ...overrides };
   return { get: (key: string) => values[key] } as unknown as ConfigService;
+}
+
+/** Stand-in for the DB-backed settings service: WhatsappService only calls getSettings(). */
+function metaSettingsFor(overrides: Record<string, unknown> = {}): MetaSettingsService {
+  const settings = { ...META_CONFIG, ...overrides };
+  return { getSettings: () => settings } as unknown as MetaSettingsService;
 }
 
 function inboundPayload(id = 'wamid.ABC123', body = 'Hello there') {
@@ -51,7 +58,7 @@ function inboundPayload(id = 'wamid.ABC123', body = 'Hello there') {
 }
 
 describe('WhatsappService', () => {
-  const service = new WhatsappService(configFor());
+  const service = new WhatsappService(metaSettingsFor());
 
   describe('verifyWebhook', () => {
     it('returns the challenge when mode and verify token match', () => {
@@ -70,9 +77,7 @@ describe('WhatsappService', () => {
   describe('verifySignature', () => {
     it('accepts a correct HMAC when an app secret is configured', () => {
       const secret = 'app-secret';
-      const signed = new WhatsappService(
-        configFor({ meta: { ...META_CONFIG, appSecret: secret } }),
-      );
+      const signed = new WhatsappService(metaSettingsFor({ appSecret: secret }));
       const body = Buffer.from(JSON.stringify({ hello: 'world' }));
       const crypto = require('crypto');
       const digest = crypto.createHmac('sha256', secret).update(body).digest('hex');
@@ -93,7 +98,7 @@ describe('WhatsappService', () => {
 });
 
 describe('WebhookController', () => {
-  const whatsapp = new WhatsappService(configFor());
+  const whatsapp = new WhatsappService(metaSettingsFor());
   const webhook = { processWebhook: jest.fn().mockResolvedValue({ processed: 1 }) };
   const controller = new WebhookController(whatsapp, webhook as unknown as WebhookService);
 

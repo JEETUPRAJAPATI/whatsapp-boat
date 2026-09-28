@@ -142,35 +142,56 @@ export class ProductService {
     }
 
     const category = dto.categoryId ? await this.requireCategory(dto.categoryId) : null;
+    const realEstateFields = ProductService.extractRealEstateFields(dto);
+    const customFields =
+      dto.customFields !== undefined || Object.keys(realEstateFields).length
+        ? { ...realEstateFields, ...(dto.customFields ?? {}) }
+        : undefined;
 
-    const product = await this.prisma.product.create({
-      data: {
-        catalogId: catalog.id,
-        retailerId,
-        name: dto.name,
-        description: dto.description,
-        price: new Prisma.Decimal(dto.price),
-        currency: (dto.currency || catalog.currency || 'INR').toUpperCase(),
-        salePrice: dto.salePrice != null ? new Prisma.Decimal(dto.salePrice) : null,
-        salePriceStartsAt: dto.salePriceStartsAt ? new Date(dto.salePriceStartsAt) : null,
-        salePriceEndsAt: dto.salePriceEndsAt ? new Date(dto.salePriceEndsAt) : null,
-        availability: (dto.availability || 'IN_STOCK') as any,
-        condition: (dto.condition || 'NEW') as any,
-        brand: dto.brand || null,
-        url: dto.url || null,
-        categoryId: category?.id || null,
-        metaCategory: category?.name || null,
-        imageUrl: dto.imageUrl || null,
-        customFields: (dto.customFields ?? undefined) as Prisma.InputJsonValue,
-        // Everything starts as a draft; publishing is a deliberate second step
-        // so a half-finished listing never reaches customers.
-        isDraft: dto.isDraft !== false,
-        isActive: dto.isActive !== false,
-        syncStatus: SyncStatus.PENDING,
-        createdBy: userEmail || null,
-      },
-      include: PRODUCT_INCLUDE,
-    });
+    let product: ProductWithRelations;
+    try {
+      product = await this.prisma.product.create({
+        data: {
+          catalogId: catalog.id,
+          retailerId,
+          name: dto.name,
+          description: dto.description,
+          price: new Prisma.Decimal(dto.price),
+          currency: (dto.currency || catalog.currency || 'INR').toUpperCase(),
+          salePrice: dto.salePrice != null ? new Prisma.Decimal(dto.salePrice) : null,
+          salePriceStartsAt: dto.salePriceStartsAt ? new Date(dto.salePriceStartsAt) : null,
+          salePriceEndsAt: dto.salePriceEndsAt ? new Date(dto.salePriceEndsAt) : null,
+          availability: (dto.availability || 'IN_STOCK') as any,
+          condition: (dto.condition || 'NEW') as any,
+          brand: dto.brand || null,
+          url: dto.url || null,
+          categoryId: category?.id || null,
+          metaCategory: category?.name || null,
+          imageUrl: dto.imageUrl || null,
+          customFields: (customFields ?? undefined) as Prisma.InputJsonValue,
+          // Everything starts as a draft; publishing is a deliberate second step
+          // so a half-finished listing never reaches customers.
+          isDraft: dto.isDraft !== false,
+          isActive: dto.isActive !== false,
+          syncStatus: SyncStatus.PENDING,
+          createdBy: userEmail || null,
+        },
+        include: PRODUCT_INCLUDE,
+      });
+    } catch (err) {
+      // The findUnique check above has a race window - two requests for the
+      // same catalog+retailerId (e.g. an aliased duplicate target) can both
+      // pass it and collide here. Report it the same way as the pre-check
+      // instead of letting a raw Prisma unique-constraint error surface.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`A product with the SKU "${retailerId}" already exists.`);
+      }
+      throw err;
+    }
+
+    // Multiple images / a video, given as public URLs (e.g. from a property
+    // management system's own CDN) rather than uploaded as files.
+    await this.applyUrlMedia(product.id, dto.imageUrls, dto.videoUrl);
 
     await this.audit.log({
       userEmail,
@@ -183,7 +204,7 @@ export class ProductService {
     // isDraft:false on create means "save and publish in one go".
     if (dto.isDraft === false) return this.publish(product.id, userEmail);
 
-    return ProductService.serialize(product);
+    return this.findOne(product.id);
   }
 
   // -----------------------------------------------------------------------
@@ -217,10 +238,18 @@ export class ProductService {
     if (dto.condition !== undefined) data.condition = dto.condition as any;
     if (dto.brand !== undefined) data.brand = dto.brand || null;
     if (dto.url !== undefined) data.url = dto.url || null;
-    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
+    // When `imageUrls` is also given, it is the source of truth for the
+    // primary image - applyUrlMedia() below sets Product.imageUrl from it.
+    if (dto.imageUrl !== undefined && dto.imageUrls === undefined) data.imageUrl = dto.imageUrl || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
-    if (dto.customFields !== undefined) {
-      data.customFields = dto.customFields as Prisma.InputJsonValue;
+
+    const realEstateFields = ProductService.extractRealEstateFields(dto);
+    if (dto.customFields !== undefined || Object.keys(realEstateFields).length) {
+      data.customFields = {
+        ...((existing.customFields as Record<string, unknown>) || {}),
+        ...realEstateFields,
+        ...(dto.customFields ?? {}),
+      } as Prisma.InputJsonValue;
     }
     if (category !== undefined) {
       data.category = category ? { connect: { id: category.id } } : { disconnect: true };
@@ -236,6 +265,11 @@ export class ProductService {
       include: PRODUCT_INCLUDE,
     });
 
+    const mediaChanged = dto.imageUrls !== undefined || dto.videoUrl !== undefined;
+    if (mediaChanged) {
+      await this.applyUrlMedia(id, dto.imageUrls, dto.videoUrl);
+    }
+
     await this.audit.log({
       userEmail,
       action: 'product.updated',
@@ -244,11 +278,17 @@ export class ProductService {
       message: `Updated "${updated.name}"`,
     });
 
-    // Keep Meta in step automatically for anything already live.
-    if (!updated.isDraft && updated.metaProductId) {
-      return this.pushToMeta(updated, userEmail);
+    const final = mediaChanged ? await this.requireProduct(id) : updated;
+
+    // Keep Meta in step automatically for anything meant to be live - including
+    // a product that was marked non-draft but never actually made it to Meta
+    // (e.g. its first publish failed for missing a field that has since been
+    // filled in). `metaProductId` alone is not a reliable "already synced"
+    // signal, so this retries through publish() instead of assuming success.
+    if (!final.isDraft) {
+      return this.publish(final.id, userEmail);
     }
-    return ProductService.serialize(updated);
+    return ProductService.serialize(final);
   }
 
   // -----------------------------------------------------------------------
@@ -678,6 +718,80 @@ export class ProductService {
     const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
     if (!category) throw new NotFoundException('Category not found.');
     return category;
+  }
+
+  /** Picks the typed real-estate attributes off a DTO, dropping empty ones. */
+  private static extractRealEstateFields(
+    dto: CreateProductDto | UpdateProductDto,
+  ): Record<string, unknown> {
+    const attrs: Record<string, unknown> = {
+      propertyType: dto.propertyType,
+      transactionType: dto.transactionType,
+      bedrooms: dto.bedrooms,
+      bathrooms: dto.bathrooms,
+      balconies: dto.balconies,
+      furnishingStatus: dto.furnishingStatus,
+      possessionStatus: dto.possessionStatus,
+      carpetArea: dto.carpetArea,
+      builtUpArea: dto.builtUpArea,
+      areaSize: dto.areaSize,
+      locality: dto.locality,
+      city: dto.city,
+      state: dto.state,
+      society: dto.society,
+      builderName: dto.builderName,
+    };
+    return Object.fromEntries(
+      Object.entries(attrs).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+    );
+  }
+
+  /**
+   * Replaces a product's URL-sourced images/video (imageUrls/videoUrl on the
+   * DTO) without touching any file the standalone catalog app itself
+   * uploaded (those keep a `storageKey`; URL-sourced rows never have one).
+   * Leaves Product.imageUrl pointing at whichever image ends up primary.
+   */
+  private async applyUrlMedia(productId: string, imageUrls: string[] | undefined, videoUrl: string | undefined) {
+    if (imageUrls !== undefined) {
+      await this.prisma.productMedia.deleteMany({
+        where: { productId, kind: MediaKind.IMAGE, storageKey: null },
+      });
+      await this.prisma.productMedia.updateMany({
+        where: { productId, kind: MediaKind.IMAGE },
+        data: { isPrimary: false },
+      });
+      if (imageUrls.length) {
+        await this.prisma.productMedia.createMany({
+          data: imageUrls.map((url, index) => ({
+            productId,
+            kind: MediaKind.IMAGE,
+            url,
+            isPrimary: index === 0,
+            sortOrder: index,
+          })),
+        });
+      }
+
+      const primary = await this.prisma.productMedia.findFirst({
+        where: { productId, kind: MediaKind.IMAGE, isPrimary: true },
+      });
+      await this.prisma.product.update({
+        where: { id: productId },
+        data: { imageUrl: primary?.url || null },
+      });
+    }
+
+    if (videoUrl !== undefined) {
+      await this.prisma.productMedia.deleteMany({
+        where: { productId, kind: MediaKind.VIDEO, storageKey: null },
+      });
+      if (videoUrl) {
+        await this.prisma.productMedia.create({
+          data: { productId, kind: MediaKind.VIDEO, url: videoUrl },
+        });
+      }
+    }
   }
 
   /** The single shape the frontend receives for a product. */

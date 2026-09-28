@@ -1,7 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AutoReplyService } from '../whatsapp/services/auto-reply.service';
 import { AutomationService } from './automation.service';
 import {
@@ -10,9 +8,6 @@ import {
   UpdateAutoReplyRuleDto,
 } from './dto/automation.dto';
 
-type AdminUser = { email: string };
-
-@UseGuards(JwtAuthGuard)
 @Controller('api/automation')
 export class AutomationController {
   constructor(
@@ -41,22 +36,18 @@ export class AutomationController {
   }
 
   @Post('auto-reply-rules')
-  createRule(@Body() dto: CreateAutoReplyRuleDto, @CurrentUser() user: AdminUser) {
-    return this.automation.createRule(dto, user?.email);
+  createRule(@Body() dto: CreateAutoReplyRuleDto) {
+    return this.automation.createRule(dto);
   }
 
   @Put('auto-reply-rules/:id')
-  updateRule(
-    @Param('id') id: string,
-    @Body() dto: UpdateAutoReplyRuleDto,
-    @CurrentUser() user: AdminUser,
-  ) {
-    return this.automation.updateRule(id, dto, user?.email);
+  updateRule(@Param('id') id: string, @Body() dto: UpdateAutoReplyRuleDto) {
+    return this.automation.updateRule(id, dto);
   }
 
   @Delete('auto-reply-rules/:id')
-  deleteRule(@Param('id') id: string, @CurrentUser() user: AdminUser) {
-    return this.automation.deleteRule(id, user?.email);
+  deleteRule(@Param('id') id: string) {
+    return this.automation.deleteRule(id);
   }
 
   /** Lets a rule fire again immediately for everyone in its cooldown. */

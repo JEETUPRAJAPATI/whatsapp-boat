@@ -5,10 +5,10 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import * as crypto from 'crypto';
 import FormData from 'form-data';
+import { MetaSettingsService } from '../../config/meta-settings.service';
 
 export interface MetaSendResult {
   metaMessageId: string;
@@ -27,19 +27,12 @@ export class WhatsappService {
   private readonly logger = new Logger('WhatsApp API');
   private readonly http: AxiosInstance;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(private readonly metaSettings: MetaSettingsService) {
     this.http = axios.create({ timeout: 20_000 });
   }
 
   private get meta() {
-    return this.config.get('meta') as {
-      accessToken: string;
-      phoneNumberId: string;
-      businessAccountId: string;
-      apiVersion: string;
-      verifyToken: string;
-      appSecret: string;
-    };
+    return this.metaSettings.getSettings();
   }
 
   get isConfigured(): boolean {

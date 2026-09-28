@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import Avatar from './Avatar';
-import { IconLogout, IconRefresh, IconSearch } from './Icons';
+import { IconRefresh, IconSearch, IconSettings } from './Icons';
+import SettingsDialog from './SettingsDialog';
 import { listTime, phoneOf } from '../lib/format';
 import { useWa } from '../store';
 
@@ -53,14 +54,12 @@ export default function Sidebar() {
     selectConversation,
     search,
     setSearch,
-    user,
-    logout,
     metaStatus,
     socketLive,
-    authRequired,
   } = useWa();
 
   const [filter, setFilter] = useState('ALL');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const visible = useMemo(() => {
     if (filter === 'UNREAD') return conversations.filter((c) => c.unreadCount > 0);
@@ -75,7 +74,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <header className="sidebar-header">
         <div className="sidebar-me">
-          <strong>{(user && user.name) || 'Inbox'}</strong>
+          <strong>Inbox</strong>
           <span>
             <i className={`conn-dot ${socketLive ? '' : 'off'}`} />
             {socketLive ? 'Live' : 'Reconnecting'}
@@ -90,13 +89,17 @@ export default function Sidebar() {
           >
             <IconRefresh />
           </button>
-          {authRequired && (
-            <button className="icon-btn" title="Sign out" onClick={logout}>
-              <IconLogout />
-            </button>
-          )}
+          <button
+            className="icon-btn"
+            title="Meta WhatsApp settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <IconSettings />
+          </button>
         </div>
       </header>
+
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
 
       <div className="sidebar-search">
         <IconSearch className="search-icon" width={18} height={18} />
