@@ -514,3 +514,15 @@ model AutoReplyDispatch {
   @@index([firedAt])
   @@map("auto_reply_dispatches")
 }
+
+/// Title and description templates a property is uploaded to the WhatsApp
+/// catalog with. Singleton row (id is always "singleton"), editable from the
+/// admin UI. Defaults are supplied by CatalogFormatService on first save.
+model CatalogFormatSettings {
+  id                  String   @id @default("singleton")
+  titleTemplate       String   @map("title_template")
+  descriptionTemplate String   @map("description_template")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("catalog_format_settings")
+}
