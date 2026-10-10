@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const qrcode = require('qrcode');
 const mime = require('mime-types');
@@ -9,6 +10,51 @@ const { Client, LocalAuth, MessageMedia, Location } = require('whatsapp-web.js')
 
 const { serializeMessage, serializeChat, serializeContact, idOf } = require('../utils/serialize');
 const store = require('./store');
+
+/**
+ * WhatsApp's own browser-side decrypt (WAWebDownloadManager.downloadAndMaybeDecrypt)
+ * throws InvalidMediaFileType on the current live WhatsApp Web build - it hands
+ * every received photo/video/document back as "application/octet-stream" instead
+ * of actually decrypting it (the fetch itself happens inside a worker our page
+ * can't instrument, so there's no small patch for it). Decrypting the CDN blob
+ * ourselves sidesteps the browser entirely: WhatsApp's media format is public -
+ * HKDF-SHA256 over the message's mediaKey derives an IV/cipher key/MAC key, the
+ * CDN body is AES-256-CBC ciphertext with a 10-byte HMAC-SHA256 tag appended -
+ * so this never breaks when WhatsApp Web's internal JS changes shape.
+ */
+const MEDIA_HKDF_INFO = {
+  image: 'WhatsApp Image Keys',
+  video: 'WhatsApp Video Keys',
+  audio: 'WhatsApp Audio Keys',
+  ptt: 'WhatsApp Audio Keys',
+  document: 'WhatsApp Document Keys',
+  sticker: 'WhatsApp Image Keys',
+};
+
+async function downloadEncryptedMedia({ directPath, mediaKeyB64, type }) {
+  const mediaKey = Buffer.from(mediaKeyB64, 'base64');
+  const info = Buffer.from(MEDIA_HKDF_INFO[type] || MEDIA_HKDF_INFO.document, 'utf8');
+  const expanded = Buffer.from(crypto.hkdfSync('sha256', mediaKey, Buffer.alloc(0), info, 112));
+  const iv = expanded.subarray(0, 16);
+  const cipherKey = expanded.subarray(16, 48);
+  const macKey = expanded.subarray(48, 80);
+
+  const res = await fetch(`https://mmg.whatsapp.net${directPath}`);
+  if (!res.ok) throw new Error(`media CDN responded ${res.status}`);
+  const encrypted = Buffer.from(await res.arrayBuffer());
+  if (encrypted.length <= 10) throw new Error('media CDN response too short');
+
+  const macFromFile = encrypted.subarray(encrypted.length - 10);
+  const cipherText = encrypted.subarray(0, encrypted.length - 10);
+  const mac = crypto.createHmac('sha256', macKey).update(Buffer.concat([iv, cipherText])).digest();
+  if (!mac.subarray(0, 10).equals(macFromFile)) throw new Error('media MAC verification failed');
+
+  const decipher = crypto.createDecipheriv('aes-256-cbc', cipherKey, iv);
+  return Buffer.concat([decipher.update(cipherText), decipher.final()]);
+}
+
+/** How long sendFile() waits for message_create to claim an outgoing upload before deleting it. */
+const PENDING_OUTGOING_MEDIA_TTL_MS = 3 * 60 * 1000;
 
 const STATES = {
   DISCONNECTED: 'DISCONNECTED',
@@ -96,6 +142,7 @@ class WhatsAppService extends EventEmitter {
     this.avatarCache = new Map();
     this.mediaIndex = new Map(); // safe message id -> cached file on disk
     this.mediaIndexBuilt = false;
+    this.pendingOutgoingMedia = new Map(); // chatId -> { filePath, at } awaiting its real message id
     this.recovering = null;
     this.injectionBroken = false;
     this.lastInjectionCheck = 0;
@@ -296,6 +343,7 @@ class WhatsAppService extends EventEmitter {
       try {
         const data = serializeMessage(msg);
         if (!data || !data.chatId) return;
+        this.claimPendingOutgoingMedia(data);
         await store.saveMessage(this.sessionId, data);
         const chat = await this.safeChat(msg);
         if (chat) await store.saveChat(this.sessionId, chat);
@@ -732,6 +780,28 @@ class WhatsAppService extends EventEmitter {
     return data;
   }
 
+  /** Pulls just the fields downloadEncryptedMedia() needs, straight off the live Store model. */
+  async getMediaRefs(messageId) {
+    const c = await this.ready();
+    return c.pupPage.evaluate(async (msgId) => {
+      const msg =
+        window.require('WAWebCollections').Msg.get(msgId) ||
+        (await window.require('WAWebCollections').Msg.getMessagesById([msgId]))?.messages?.[0];
+      if (!msg || !msg.directPath || !msg.mediaKey) return null;
+      let mediaKeyB64 = msg.mediaKey;
+      if (typeof mediaKeyB64 !== 'string') {
+        mediaKeyB64 = btoa(String.fromCharCode(...new Uint8Array(mediaKeyB64)));
+      }
+      return {
+        directPath: msg.directPath,
+        mediaKeyB64,
+        type: msg.type,
+        mimetype: msg.mimetype,
+        filename: msg.filename || null,
+      };
+    }, messageId);
+  }
+
   /** Downloads media once and caches it on disk keyed by message id. */
   async getMedia(messageId) {
     const c = await this.ready();
@@ -754,26 +824,67 @@ class WhatsAppService extends EventEmitter {
       }
     }
 
-    const msg = await c.getMessageById(messageId);
+    let msg = await c.getMessageById(messageId);
+    if (!msg) {
+      // getMessageById's direct id-lookup regularly misses a message moments
+      // after it was sent in an @lid-identity chat (self-chats among them) -
+      // the chat's own message list forces a real sync and finds it instead.
+      const remote = messageId.split('_')[1];
+      if (remote) {
+        try {
+          const chat = await c.getChatById(remote);
+          const recent = chat ? await chat.fetchMessages({ limit: 50 }) : [];
+          msg = recent.find((m) => idOf(m.id) === messageId) || null;
+        } catch {
+          /* fall through to the 404 below */
+        }
+      }
+    }
     if (!msg) throw Object.assign(new Error('Message not found'), { status: 404 });
     if (!msg.hasMedia) throw Object.assign(new Error('Message has no media'), { status: 400 });
 
-    const media = await msg.downloadMedia();
-    if (!media || !media.data) {
-      throw Object.assign(new Error('Media is no longer available'), { status: 410 });
+    let buffer = null;
+    let mimetype = null;
+    let filename = null;
+
+    // Primary path: decrypt the CDN blob ourselves (see downloadEncryptedMedia's
+    // comment) - this works regardless of what WhatsApp Web's internal JS does.
+    try {
+      const refs = await this.getMediaRefs(messageId);
+      if (refs) {
+        buffer = await downloadEncryptedMedia(refs);
+        mimetype = refs.mimetype;
+        filename = refs.filename;
+      }
+    } catch (err) {
+      console.warn(`[wa:${this.sessionId}] standalone media decrypt failed, falling back:`, err.message);
     }
-    const ext = mime.extension(media.mimetype) || 'bin';
+
+    // Fallback: the library's own download path, for whatever this build's
+    // browser-side decrypt still manages to handle (or future WhatsApp Web
+    // builds where it works again).
+    if (!buffer) {
+      const media = await msg.downloadMedia();
+      if (!media || !media.data) {
+        throw Object.assign(new Error('Media is no longer available'), { status: 410 });
+      }
+      buffer = Buffer.from(media.data, 'base64');
+      mimetype = media.mimetype;
+      filename = media.filename;
+    }
+
+    const ext = mime.extension(mimetype) || 'bin';
     const filePath = path.join(this.mediaDir, `${safeId}.${ext}`);
-    fs.writeFileSync(filePath, Buffer.from(media.data, 'base64'));
+    fs.writeFileSync(filePath, buffer);
     this.mediaIndex.set(safeId, filePath);
     store
       .updateMedia(this.sessionId, messageId, {
-        mediaMime: media.mimetype,
-        mediaFilename: media.filename || path.basename(filePath),
+        mediaMime: mimetype,
+        mediaFilename: filename || path.basename(filePath),
         mediaPath: filePath,
       })
       .catch(() => {});
-    return { filePath, mimetype: media.mimetype, filename: media.filename };
+    return { filePath, mimetype, filename };
   }
 
   /* ---------------------------------------------------------------- */
@@ -805,14 +916,82 @@ class WhatsAppService extends EventEmitter {
     });
   }
 
+  /**
+   * Chats on WhatsApp's newer "@lid" identities (shown instead of a phone
+   * number for some contacts/communities) are not yet memoized in the page's
+   * in-memory Store when `sendMessage(chatId, media)` is called cold - the
+   * media-upload path then dies deep inside WhatsApp Web's own JS with "Data
+   * passed to getter must include an id property". Resolving the Chat object
+   * first, the same way forwardMessage() already does, forces that lookup, so
+   * sending through the chat succeeds for @lid as well as @c.us/@g.us chats.
+   */
   async sendFile(chatId, { filePath, base64, mimetype, filename }, opts = {}) {
-    const c = await this.ready();
-    const media = filePath
-      ? MessageMedia.fromFilePath(filePath)
-      : new MessageMedia(mimetype, base64, filename);
-    if (filename) media.filename = filename;
-    const msg = await c.sendMessage(chatId, media, this.buildSendOptions(opts));
-    return serializeMessage(msg);
+    return this.guard(async (c) => {
+      const media = filePath
+        ? MessageMedia.fromFilePath(filePath)
+        : new MessageMedia(mimetype, base64, filename);
+      if (filename) media.filename = filename;
+      const chat = await c.getChatById(chatId);
+      // message_create reports data.chatId from the chat's own resolved id,
+      // which for @lid-identity chats differs from the @c.us id we were called
+      // with - key on the same resolved id or claimPendingOutgoingMedia() below
+      // never finds this entry.
+      const resolvedChatId = idOf(chat.id) || chatId;
+      // We already have this exact file on disk, so there's no need to ever ask
+      // WhatsApp to re-download it for the preview - downloadMedia() breaks on
+      // WhatsApp Web builds newer than this library targets (every image/video
+      // we only just sent would otherwise show "Image unavailable" in the UI).
+      // message_create claims this once the real message id is known, and this
+      // service - not the route - now owns deleting the uploaded temp file, so
+      // it can outlive the HTTP response long enough for that claim to land.
+      if (filePath) {
+        const pending = { filePath, at: Date.now() };
+        // Measured: message_create for a freshly-sent image can take over a
+        // minute to arrive on this WhatsApp Web build (upload + processing),
+        // so the sweep has to outlast that comfortably rather than the few
+        // seconds you'd expect.
+        pending.timer = setTimeout(() => {
+          if (this.pendingOutgoingMedia.get(resolvedChatId) === pending) {
+            this.pendingOutgoingMedia.delete(resolvedChatId);
+          }
+          fs.unlink(filePath, () => {});
+        }, PENDING_OUTGOING_MEDIA_TTL_MS);
+        pending.timer.unref?.();
+        this.pendingOutgoingMedia.set(resolvedChatId, pending);
+      }
+      try {
+        const msg = await chat.sendMessage(media, this.buildSendOptions(opts));
+        return serializeMessage(msg);
+      } catch (err) {
+        const pending = this.pendingOutgoingMedia.get(resolvedChatId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.pendingOutgoingMedia.delete(resolvedChatId);
+          fs.unlink(filePath, () => {});
+        }
+        throw err;
+      }
+    });
+  }
+
+  /** Claims a just-sent file for its real message id, so getMedia never redownloads it. */
+  claimPendingOutgoingMedia(data) {
+    if (!data.fromMe || !data.hasMedia) return;
+    const pending = this.pendingOutgoingMedia.get(data.chatId);
+    if (!pending || Date.now() - pending.at > PENDING_OUTGOING_MEDIA_TTL_MS) return;
+    clearTimeout(pending.timer);
+    this.pendingOutgoingMedia.delete(data.chatId);
+    try {
+      const safeId = data.id.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const ext = path.extname(pending.filePath) || (mime.extension(data.mediaMime) ? `.${mime.extension(data.mediaMime)}` : '');
+      const dest = path.join(this.mediaDir, `${safeId}${ext}`);
+      fs.copyFileSync(pending.filePath, dest);
+      this.mediaIndex.set(safeId, dest);
+    } catch (err) {
+      console.warn(`[wa:${this.sessionId}] could not cache outgoing media:`, err.message);
+    } finally {
+      fs.unlink(pending.filePath, () => {});
+    }
   }
 
   async sendLocation(chatId, { latitude, longitude, description }, opts = {}) {

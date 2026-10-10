@@ -230,6 +230,9 @@ account.post('/messages/send-media', upload.single('file'), ah(async (req, res) 
   const named = path.join(path.dirname(tmpPath), `${path.basename(tmpPath)}-${req.file.originalname}`);
   try {
     fs.renameSync(tmpPath, named);
+    // sendFile() owns deleting `named` from here - it has to stay on disk a
+    // little past this response, for message_create's local-cache copy (see
+    // claimPendingOutgoingMedia in whatsapp.js) to still find it.
     const msg = await req.wa.sendFile(
       chatId,
       { filePath: named, filename: req.file.originalname },
@@ -242,8 +245,9 @@ account.post('/messages/send-media', upload.single('file'), ah(async (req, res) 
       }
     );
     res.json({ message: msg, sent: true });
-  } finally {
+  } catch (err) {
     fs.promises.unlink(named).catch(() => fs.promises.unlink(tmpPath).catch(() => {}));
+    throw err;
   }
 }));
 
