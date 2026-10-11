@@ -257,6 +257,35 @@ export class CatalogService {
     return this.connect({ accountId: params.accountId, metaCatalogId: created.id });
   }
 
+  /**
+   * Deletes the catalog at Meta itself - irreversible, takes every product
+   * and product set in it with it. `id` may be either our own catalog row id
+   * or Meta's own catalog id (the Settings screen's "Fetch from Meta" list
+   * only ever has the latter, for a catalog nobody has connected here yet).
+   *
+   * A tracked catalog's own WABA credential signs the call; an untracked one
+   * has no WABA of its own, so it falls back to the server's bootstrap token
+   * (needs catalog/business admin rights on that catalog to succeed).
+   */
+  async remove(id: string) {
+    const tracked = await this.prisma.catalog.findFirst({
+      where: { OR: [{ id }, { metaCatalogId: id }] },
+    });
+
+    const metaCatalogId = tracked?.metaCatalogId ?? id;
+    const token = tracked
+      ? await this.tokens.forAccount(tracked.whatsappAccountId)
+      : this.tokens.requireBootstrapToken();
+
+    await this.metaCatalog.deleteCatalog(token, metaCatalogId);
+
+    if (tracked) {
+      await this.prisma.catalog.delete({ where: { id: tracked.id } });
+    }
+
+    return { success: true };
+  }
+
   async setDefault(catalogId: string) {
     const catalog = await this.resolve(catalogId);
     await this.prisma.$transaction([

@@ -68,6 +68,12 @@ export class CatalogController {
     return this.catalogs.setDefault(id);
   }
 
+  /** Deletes the catalog at Meta - irreversible, takes every product in it with it. */
+  @Delete('catalogs/:id')
+  remove(@Param('id') id: string) {
+    return this.catalogs.remove(id);
+  }
+
   // =======================================================================
   // Sync
   // =======================================================================

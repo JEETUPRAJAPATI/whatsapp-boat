@@ -192,6 +192,18 @@ export class MetaCatalogService {
     return created;
   }
 
+  /** Deletes the catalog itself at Meta - every product and product set in it goes with it. */
+  async deleteCatalog(token: string, catalogId: string): Promise<{ success: boolean }> {
+    const result = await this.graph.delete<{ success: boolean }>(
+      catalogId,
+      token,
+      undefined,
+      `delete catalog ${catalogId}`,
+    );
+    this.logger.log(`Deleted Meta catalog ${catalogId}`);
+    return result;
+  }
+
   /** Links an existing catalog to a WABA so it can be used in chat. */
   async connectCatalogToWaba(
     token: string,

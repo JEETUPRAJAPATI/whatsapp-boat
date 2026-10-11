@@ -273,6 +273,17 @@ export function normalizeMetaError(err: unknown, context = 'request'): Normalize
       404,
     );
   }
+  // A delete/update against an id Meta no longer has comes back as a plain
+  // code 100 with subcode 33 ("Unsupported ... request. Object with ID '...'
+  // does not exist...") rather than the 803/404 shape above - still means the
+  // same thing: nothing left there to touch.
+  if (metaCode === 100 && metaSubcode === 33) {
+    return out(
+      'That object does not exist on Meta, or this account cannot see it.',
+      'OBJECT_NOT_FOUND',
+      404,
+    );
+  }
   if (metaCode === 1 || metaCode === 2 || httpStatus >= 500) {
     return out(
       'Meta reported a temporary problem on their side. Please try again in a few minutes.',
